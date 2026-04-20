@@ -32,7 +32,23 @@ export async function bybitSignedGet(
       'X-BAPI-RECV-WINDOW': String(recvWindow),
     },
   })
-  return res.json() as Promise<{ retCode: number; retMsg?: string; result?: { list?: unknown[]; nextPageCursor?: string } }>
+  const text = await res.text()
+  const preview = text.replace(/\s+/g, ' ').slice(0, 280)
+  if (!text.trim()) {
+    throw new Error(`Пустой ответ Bybit (${path}, HTTP ${res.status}). Проверьте сеть и URL.`)
+  }
+  let data: { retCode: number; retMsg?: string; result?: { list?: unknown[]; nextPageCursor?: string } }
+  try {
+    data = JSON.parse(text) as typeof data
+  } catch {
+    const looksHtml = /^\s*</.test(text)
+    throw new Error(
+      looksHtml
+        ? `Bybit вернул HTML вместо JSON (${path}, HTTP ${res.status}). Часто это блокировка/прокси или неверный URL. Фрагмент: ${preview}`
+        : `Ответ Bybit не JSON (${path}, HTTP ${res.status}): ${preview}`,
+    )
+  }
+  return data
 }
 
 export async function fetchAllClosedPnl(
