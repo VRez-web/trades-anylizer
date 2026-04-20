@@ -100,8 +100,9 @@ let _db: ReturnType<typeof drizzle<typeof appSchema>> | null = null
 
 export function useDb() {
   if (_db && _sqlite) return _db
-  const root = process.cwd()
-  const dir = join(root, '.data')
+  /** На Render и т.п.: смонтируйте Persistent Disk и задайте DATA_DIR (абсолютный путь к каталогу с БД). */
+  const dataRoot = process.env.DATA_DIR?.trim() || join(process.cwd(), '.data')
+  const dir = dataRoot
   mkdirSync(dir, { recursive: true })
   const dbPath = join(dir, 'app.db')
   const sqlite = new Database(dbPath)
