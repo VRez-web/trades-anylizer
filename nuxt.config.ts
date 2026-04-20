@@ -11,6 +11,8 @@ export default defineNuxtConfig({
   runtimeConfig: {
     bybitApiKey: '',
     bybitApiSecret: '',
+    /** HTTP(S) прокси для запросов к api.bybit.com (обход геоблокировки CloudFront с IP хостинга). Env: NUXT_BYBIT_HTTP_PROXY */
+    bybitHttpProxy: '',
     bybitTestnet: false,
     public: {
       depositUsdt: 0,

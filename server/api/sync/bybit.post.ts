@@ -4,11 +4,13 @@ import { useDb } from '../../utils/db'
 import { trades } from '../../database/schema'
 import {
   resolveBybitCredentials,
+  resolveBybitHttpProxy,
   probeBybitApiKey,
   fetchAllClosedPnl,
   positionSideFromCloseOrder,
   closedPnlToExternalKey,
   bybitBaseUrl,
+  BybitGeoBlockedError,
 } from '../../utils/bybitCredentials'
 
 type TradeInsert = InferInsertModel<typeof trades>
@@ -60,6 +62,7 @@ export default defineEventHandler(async (event) => {
   try {
     const config = useRuntimeConfig(event)
     const { apiKey, apiSecret, testnet } = resolveBybitCredentials(config)
+    const proxyUrl = resolveBybitHttpProxy(config)
     if (!apiKey || !apiSecret) {
       throw createError({
         statusCode: 503,
@@ -68,7 +71,7 @@ export default defineEventHandler(async (event) => {
       })
     }
     const baseUrl = bybitBaseUrl(testnet)
-    const keyCheck = await probeBybitApiKey(apiKey, apiSecret, baseUrl)
+    const keyCheck = await probeBybitApiKey(apiKey, apiSecret, baseUrl, proxyUrl)
     if (keyCheck.retCode !== 0) {
       throw createError({
         statusCode: 502,
@@ -85,6 +88,7 @@ export default defineEventHandler(async (event) => {
       category,
       startTime,
       endTime,
+      proxyUrl,
     })) as Record<string, string>[]
     const db = useDb()
     const now = new Date()
@@ -134,6 +138,13 @@ export default defineEventHandler(async (event) => {
     }
   } catch (e) {
     if (e && typeof e === 'object' && 'statusCode' in e) throw e
+    if (e instanceof BybitGeoBlockedError) {
+      throw createError({
+        statusCode: 502,
+        statusMessage: e.message,
+        data: { detail: e.message, code: e.code },
+      })
+    }
     const msg = syncErrorMessage(e)
     console.error('[api/sync/bybit]', e)
     throw createError({

@@ -1,11 +1,17 @@
 import { sql } from 'drizzle-orm'
 import { useDb } from '../../utils/db'
 import { trades } from '../../database/schema'
-import { resolveBybitCredentials, probeBybitApiKey, bybitBaseUrl } from '../../utils/bybitCredentials'
+import {
+  resolveBybitCredentials,
+  resolveBybitHttpProxy,
+  probeBybitApiKey,
+  bybitBaseUrl,
+} from '../../utils/bybitCredentials'
 
 export default defineEventHandler(async (event) => {
   const config = useRuntimeConfig(event)
   const { apiKey, apiSecret, testnet } = resolveBybitCredentials(config)
+  const proxyUrl = resolveBybitHttpProxy(config)
   const baseUrl = bybitBaseUrl(testnet)
   const keysPresent = Boolean(apiKey && apiSecret)
   const db = useDb()
@@ -22,7 +28,7 @@ export default defineEventHandler(async (event) => {
     }
   } else {
     try {
-      const data = await probeBybitApiKey(apiKey, apiSecret, baseUrl)
+      const data = await probeBybitApiKey(apiKey, apiSecret, baseUrl, proxyUrl)
       probe = {
         ok: data.retCode === 0,
         retCode: data.retCode,
@@ -40,6 +46,7 @@ export default defineEventHandler(async (event) => {
     keysPresent,
     testnet,
     baseUrl,
+    proxyConfigured: Boolean(proxyUrl),
     tradeCount,
     probe,
   }
