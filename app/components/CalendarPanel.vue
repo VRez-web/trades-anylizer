@@ -29,6 +29,18 @@ const anchor = computed(() => new Date(props.year, props.month - 1, 1))
 
 const label = computed(() => format(anchor.value, 'LLLL yyyy', { locale: undefined }))
 
+/** Сумма PnL за отображаемый месяц (по дням из `days`). */
+const monthNet = computed(() => {
+  const pad = String(props.month).padStart(2, '0')
+  const prefix = `${props.year}-${pad}-`
+  let sum = 0
+  for (const [k, v] of Object.entries(props.days)) {
+    if (!k.startsWith(prefix) || typeof v !== 'number' || !Number.isFinite(v)) continue
+    sum += v
+  }
+  return sum
+})
+
 const cells = computed(() => {
   const start = startOfWeek(startOfMonth(anchor.value), { weekStartsOn: 1 })
   const end = endOfWeek(endOfMonth(anchor.value), { weekStartsOn: 1 })
@@ -81,9 +93,19 @@ function next() {
 <template>
   <div class="card cal">
     <div class="head">
-      <button type="button" class="btn" @click="prev">←</button>
-      <h2 class="title">{{ label }}</h2>
-      <button type="button" class="btn" @click="next">→</button>
+      <button type="button" class="btn cal-nav-btn" aria-label="Предыдущий месяц" @click="prev">←</button>
+      <div class="title-wrap">
+        <h2 class="title">
+          <span class="title-month">{{ label }}</span>
+          <span
+            class="title-net"
+            :class="{ 'title-net--pos': monthNet > 0, 'title-net--neg': monthNet < 0, 'title-net--zero': monthNet === 0 }"
+          >
+            ({{ fmtSignedUsdt(monthNet, 0) }})
+          </span>
+        </h2>
+      </div>
+      <button type="button" class="btn cal-nav-btn" aria-label="Следующий месяц" @click="next">→</button>
     </div>
     <div class="weekdays">
       <span v-for="w in ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс']" :key="w">{{ w }}</span>
@@ -123,17 +145,58 @@ function next() {
 
 <style scoped>
 .head {
-  display: flex;
+  display: grid;
+  grid-template-columns: 2.5rem minmax(0, 1fr) 2.5rem;
   align-items: center;
-  justify-content: space-between;
   gap: 0.5rem;
   margin-bottom: 0.75rem;
+}
+.cal-nav-btn {
+  width: 2.5rem;
+  height: 2.5rem;
+  min-width: 2.5rem;
+  min-height: 2.5rem;
+  padding: 0;
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+  font-size: 1.1rem;
+}
+.title-wrap {
+  min-width: 0;
+  text-align: center;
 }
 .title {
   margin: 0;
   font-size: 1.1rem;
   font-weight: 600;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: center;
+  gap: 0.35rem 0.5rem;
+  line-height: 1.25;
+}
+.title-month {
   text-transform: capitalize;
+}
+.title-net {
+  font-weight: 600;
+  font-size: 0.95rem;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.title-net--zero {
+  color: var(--muted);
+  font-weight: 500;
+}
+.title-net--pos {
+  color: #15803d;
+}
+.title-net--neg {
+  color: #b91c1c;
 }
 .weekdays {
   display: grid;

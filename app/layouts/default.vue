@@ -1,3 +1,14 @@
+<script setup lang="ts">
+async function logout() {
+  try {
+    await $fetch('/api/auth/logout', { method: 'POST' })
+  } catch {
+    /* ignore */
+  }
+  await navigateTo('/login')
+}
+</script>
+
 <template>
   <div>
     <header class="top">
@@ -13,6 +24,7 @@
             <NuxtLink to="/journal/month">Месяц</NuxtLink>
             <NuxtLink to="/journal/year">Год</NuxtLink>
           </div>
+          <button type="button" class="btn btn-tiny logout-btn" @click="logout">Выйти</button>
         </nav>
       </div>
     </header>
@@ -64,5 +76,15 @@
 .sub-label {
   color: var(--muted);
   font-size: 0.8rem;
+}
+.logout-btn {
+  margin-left: auto;
+  font-size: 0.8rem;
+  padding: 0.3rem 0.55rem;
+}
+@media (max-width: 640px) {
+  .logout-btn {
+    margin-left: 0;
+  }
 }
 </style>

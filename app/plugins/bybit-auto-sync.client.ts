@@ -6,6 +6,8 @@ export default defineNuxtPlugin(async () => {
   const flag = 'trades-analyzer-bybit-sync-session'
   if (typeof sessionStorage !== 'undefined' && sessionStorage.getItem(flag)) return
   try {
+    const me = await $fetch('/api/auth/me')
+    if (!me.authed) return
     await $fetch('/api/sync/bybit', {
       method: 'POST',
       body: { days: 365 },
