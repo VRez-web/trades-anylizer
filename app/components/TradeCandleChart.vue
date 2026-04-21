@@ -18,6 +18,14 @@ import {
 } from '#shared/tradeChartMarkers'
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 
+/** Ноги объединённой сделки (время/цена каждой исходной записи). Без этого — одна пара вход/выход. */
+type MergeLeg = {
+  entryAt: string
+  exitAt: string
+  entryPrice: number
+  exitPrice: number
+}
+
 const props = withDefaults(
   defineProps<{
     symbol: string
@@ -25,6 +33,8 @@ const props = withDefaults(
     exitAt: string
     entryPrice: number
     exitPrice: number
+    /** Если задано и не пусто — на графике все ноги (круги), без пунктира по сводным ценам. */
+    mergeLegs?: MergeLeg[]
     side?: 'long' | 'short'
     height?: number
     marketCategory?: string
@@ -45,10 +55,17 @@ const tfOptions = [
 ]
 
 const range = computed(() => {
-  const a = new Date(props.entryAt).getTime()
-  const b = new Date(props.exitAt).getTime()
-  const lo = Math.min(a, b)
-  const hi = Math.max(a, b)
+  const times: number[] = []
+  const legs = props.mergeLegs
+  if (legs?.length) {
+    for (const leg of legs) {
+      times.push(new Date(leg.entryAt).getTime(), new Date(leg.exitAt).getTime())
+    }
+  } else {
+    times.push(new Date(props.entryAt).getTime(), new Date(props.exitAt).getTime())
+  }
+  const lo = Math.min(...times)
+  const hi = Math.max(...times)
   const span = Math.max(hi - lo, 60_000)
   const iv = klineIntervalToMs(tf.value)
   const pad = Math.max(48 * iv, Math.floor(span * 0.25))
@@ -67,7 +84,7 @@ const klineUrl = computed(() => {
 })
 
 const { data, error, pending } = useFetch(klineUrl, {
-  watch: [tf, () => props.symbol, () => props.entryAt, () => props.exitAt, () => props.marketCategory],
+  watch: [tf, () => props.symbol, () => props.entryAt, () => props.exitAt, () => props.marketCategory, () => props.mergeLegs],
 })
 
 const root = ref<HTMLDivElement | null>(null)
@@ -75,15 +92,19 @@ let chart: ReturnType<typeof createChart> | null = null
 let resizeObserver: ResizeObserver | null = null
 let markersLayout: ReturnType<typeof bindSeriesMarkersLayoutSync> | null = null
 
-function priceRange(bars: { low: number; high: number }[], ep: number, xp: number) {
+function priceRange(bars: { low: number; high: number }[], extra: number[]) {
   let lo = Infinity
   let hi = -Infinity
   for (const c of bars) {
     lo = Math.min(lo, c.low)
     hi = Math.max(hi, c.high)
   }
-  lo = Math.min(lo, ep, xp)
-  hi = Math.max(hi, ep, xp)
+  for (const p of extra) {
+    if (Number.isFinite(p)) {
+      lo = Math.min(lo, p)
+      hi = Math.max(hi, p)
+    }
+  }
   if (!Number.isFinite(lo) || !Number.isFinite(hi)) return null
   if (lo === hi) {
     const mid = lo
@@ -106,8 +127,17 @@ function draw() {
     | undefined
   if (!raw?.length) return
   const bars = sortBarsByTime(raw)
-  const pr = priceRange(bars, props.entryPrice, props.exitPrice)
-  const mid = pr ? (pr.from + pr.to) / 2 : (props.entryPrice + props.exitPrice) / 2
+  const legs = props.mergeLegs
+  const extraPrices =
+    legs?.length != null && legs.length > 0
+      ? legs.flatMap((l) => [l.entryPrice, l.exitPrice])
+      : [props.entryPrice, props.exitPrice]
+  const pr = priceRange(bars, extraPrices)
+  const mid = pr
+    ? (pr.from + pr.to) / 2
+    : legs?.length
+      ? legs.reduce((s, l) => s + l.entryPrice + l.exitPrice, 0) / (legs.length * 2)
+      : (props.entryPrice + props.exitPrice) / 2
   const priceFmt = chartAxisPriceFormat(props.symbol, mid)
   const chartWidth = Math.max(1, Math.floor(root.value.getBoundingClientRect().width))
   chart = createChart(root.value, {
@@ -125,7 +155,11 @@ function draw() {
       borderColor: '#e2e8f0',
       scaleMargins: { top: 0.08, bottom: 0.08 },
     },
-    timeScale: { borderColor: '#e2e8f0' },
+    timeScale: {
+      borderColor: '#e2e8f0',
+      timeVisible: true,
+      secondsVisible: true,
+    },
   })
   const series = chart.addSeries(CandlestickSeries, {
     upColor: '#22c55e',
@@ -138,72 +172,129 @@ function draw() {
     lastValueVisible: false,
   })
   series.setData(bars)
-  const { entry: labIn, exit: labOut } = entryExitLabels(1, props.side)
-  series.createPriceLine({
-    price: props.entryPrice,
-    color: MARKER.entry,
-    lineWidth: 2,
-    lineStyle: LineStyle.Dashed,
-    axisLabelVisible: true,
-    title: 'Вход',
-  })
-  series.createPriceLine({
-    price: props.exitPrice,
-    color: MARKER.exit,
-    lineWidth: 2,
-    lineStyle: LineStyle.Dashed,
-    axisLabelVisible: true,
-    title: 'Выход',
-  })
-  const tEntry = eventUnixSeconds(props.entryAt)
-  const tExit = eventUnixSeconds(props.exitAt)
-  const te = barOpenTimeForEvent(bars, tEntry)
-  const tx = barOpenTimeForEvent(bars, tExit)
-  const markers =
-    props.side === 'short'
-      ? [
-          {
-            time: te,
-            position: 'atPriceMiddle' as const,
-            price: props.entryPrice,
-            color: MARKER.entry,
-            shape: 'arrowDown' as const,
-            text: labIn,
-          },
-          {
-            time: tx,
-            position: 'atPriceMiddle' as const,
-            price: props.exitPrice,
-            color: MARKER.exit,
-            shape: 'arrowUp' as const,
-            text: labOut,
-          },
-        ]
-      : [
-          {
-            time: te,
-            position: 'atPriceMiddle' as const,
-            price: props.entryPrice,
-            color: MARKER.entry,
-            shape: 'arrowUp' as const,
-            text: labIn,
-          },
-          {
-            time: tx,
-            position: 'atPriceMiddle' as const,
-            price: props.exitPrice,
-            color: MARKER.exit,
-            shape: 'arrowDown' as const,
-            text: labOut,
-          },
-        ]
-  const markersSorted = [...markers].sort((a, b) => a.time - b.time || a.price - b.price)
+  const useLegs = legs?.length != null && legs.length > 0
+
+  type M =
+    | {
+        time: number
+        position: 'atPriceMiddle'
+        price: number
+        color: string
+        shape: 'circle'
+        text: string
+      }
+    | {
+        time: number
+        position: 'atPriceMiddle'
+        price: number
+        color: string
+        shape: 'arrowUp' | 'arrowDown'
+        text: string
+      }
+
+  let markersSorted: M[]
+
+  if (useLegs && legs) {
+    const circleMarkers: M[] = []
+    legs.forEach((leg, idx) => {
+      const i = idx + 1
+      const { entry: lIn, exit: lOut } = entryExitLabels(i, props.side)
+      const te = eventUnixSeconds(leg.entryAt)
+      const tx = eventUnixSeconds(leg.exitAt)
+      const at = barOpenTimeForEvent(bars, te)
+      const bt = barOpenTimeForEvent(bars, tx)
+      circleMarkers.push(
+        {
+          time: at,
+          position: 'atPriceMiddle',
+          price: leg.entryPrice,
+          color: MARKER.entry,
+          shape: 'circle',
+          text: lIn,
+        },
+        {
+          time: bt,
+          position: 'atPriceMiddle',
+          price: leg.exitPrice,
+          color: MARKER.exit,
+          shape: 'circle',
+          text: lOut,
+        },
+      )
+    })
+    markersSorted = circleMarkers.sort((a, b) => a.time - b.time || a.price - b.price)
+  } else {
+    const { entry: labIn, exit: labOut } = entryExitLabels(1, props.side)
+    series.createPriceLine({
+      price: props.entryPrice,
+      color: MARKER.entry,
+      lineWidth: 2,
+      lineStyle: LineStyle.Dashed,
+      axisLabelVisible: true,
+      title: 'Вход',
+    })
+    series.createPriceLine({
+      price: props.exitPrice,
+      color: MARKER.exit,
+      lineWidth: 2,
+      lineStyle: LineStyle.Dashed,
+      axisLabelVisible: true,
+      title: 'Выход',
+    })
+    const tEntry = eventUnixSeconds(props.entryAt)
+    const tExit = eventUnixSeconds(props.exitAt)
+    const te = barOpenTimeForEvent(bars, tEntry)
+    const tx = barOpenTimeForEvent(bars, tExit)
+    const markers: M[] =
+      props.side === 'short'
+        ? [
+            {
+              time: te,
+              position: 'atPriceMiddle',
+              price: props.entryPrice,
+              color: MARKER.entry,
+              shape: 'arrowDown',
+              text: labIn,
+            },
+            {
+              time: tx,
+              position: 'atPriceMiddle',
+              price: props.exitPrice,
+              color: MARKER.exit,
+              shape: 'arrowUp',
+              text: labOut,
+            },
+          ]
+        : [
+            {
+              time: te,
+              position: 'atPriceMiddle',
+              price: props.entryPrice,
+              color: MARKER.entry,
+              shape: 'arrowUp',
+              text: labIn,
+            },
+            {
+              time: tx,
+              position: 'atPriceMiddle',
+              price: props.exitPrice,
+              color: MARKER.exit,
+              shape: 'arrowDown',
+              text: labOut,
+            },
+          ]
+    markersSorted = [...markers].sort((a, b) => a.time - b.time || a.price - b.price)
+  }
   chart.timeScale().fitContent()
   if (pr) {
     series.priceScale().applyOptions({ autoScale: false })
     series.priceScale().setVisibleRange(pr)
   }
-  const markersApi = createSeriesMarkers(series, markersSorted, { autoScale: true })
+  const markersApi = createSeriesMarkers(
+    series,
+    markersSorted as Parameters<typeof createSeriesMarkers>[1],
+    { autoScale: true },
+  )
   if (pr) {
     series.priceScale().setVisibleRange(pr)
   }
@@ -216,8 +307,19 @@ const errText = computed(() => {
   return e.statusMessage || e.message || 'Ошибка загрузки'
 })
 
+const showMergeLegsHint = computed(() => (props.mergeLegs?.length ?? 0) > 0)
+
 watch(
-  () => [data.value?.bars, props.entryPrice, props.exitPrice, props.entryAt, props.exitAt, props.height, props.side],
+  () => [
+    data.value?.bars,
+    props.entryPrice,
+    props.exitPrice,
+    props.entryAt,
+    props.exitAt,
+    props.height,
+    props.side,
+    props.mergeLegs,
+  ],
   async () => {
     await nextTick()
     draw()
@@ -279,8 +381,14 @@ onUnmounted(() => {
       :style="{ '--trade-chart-h': `${height}px` }"
     />
     <p v-if="data?.bars?.length && !error" class="hint muted">
-      Пунктир — цены входа/выхода. По горизонтали маркер привязан к свече с тем же временем открытия, что и у бара на графике
-      (интервал <strong>[open, следующий open)</strong>, UTC). Стрелки — направление у шорта/лонга; Вх1/Вых1 и л/ш — сторона.
+      <template v-if="showMergeLegsHint">
+        Объединённая сделка: <strong>круги</strong> — входы и выходы по каждой ноге (Вх1…). Пунктир по сводным ценам не рисуется.
+        Привязка к свече — как ниже (UTC, интервал <strong>[open, следующий open)</strong>).
+      </template>
+      <template v-else>
+        Пунктир — цены входа/выхода. По горизонтали маркер привязан к свече с тем же временем открытия, что и у бара на графике
+        (интервал <strong>[open, следующий open)</strong>, UTC). Стрелки — направление у шорта/лонга; Вх1/Вых1 и л/ш — сторона.
+      </template>
     </p>
   </div>
 </template>

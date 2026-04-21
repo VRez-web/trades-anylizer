@@ -152,7 +152,11 @@ function draw() {
       borderColor: '#e2e8f0',
       scaleMargins: { top: 0.08, bottom: 0.08 },
     },
-    timeScale: { borderColor: '#e2e8f0' },
+    timeScale: {
+      borderColor: '#e2e8f0',
+      timeVisible: true,
+      secondsVisible: true,
+    },
   })
   const series = chart.addSeries(CandlestickSeries, {
     upColor: '#22c55e',

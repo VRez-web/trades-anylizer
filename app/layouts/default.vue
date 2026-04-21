@@ -18,6 +18,7 @@ async function logout() {
         <NuxtLink to="/trades" class="brand">Trades Analyzer</NuxtLink>
         <nav class="nav">
           <NuxtLink to="/trades">Сделки</NuxtLink>
+          <NuxtLink to="/trades/list">Список</NuxtLink>
           <NuxtLink to="/system">Торговая система</NuxtLink>
           <div class="sub">
             <span class="sub-label">Журнал</span>

@@ -26,6 +26,18 @@ function mapRow(row: Record<string, string>, category: string, now: Date): Trade
   if (!Number.isFinite(entryPrice) || !Number.isFinite(exitPrice) || !Number.isFinite(income)) {
     return null
   }
+  /** createdTime / updatedTime — метки записи закрытого PnL в Bybit: вход ≈ created, выход ≈ updated. */
+  const ct = Number(row.createdTime)
+  const ut = Number(row.updatedTime)
+  let entryMs = Number.isFinite(ct) ? ct : Number(row.updatedTime)
+  let exitMs = Number.isFinite(ut) ? ut : entryMs
+  if (entryMs > exitMs) {
+    const s = entryMs
+    entryMs = exitMs
+    exitMs = s
+  }
+  /** В БД `entry_at`/`exit_at` хранятся в секундах (Drizzle `timestamp`), +1 мс теряется при записи — минимум +1 с. */
+  if (entryMs === exitMs) exitMs = entryMs + 1000
   return {
     externalKey: closedPnlToExternalKey(
       { orderId: row.orderId, updatedTime: row.updatedTime },
@@ -35,8 +47,8 @@ function mapRow(row: Record<string, string>, category: string, now: Date): Trade
     side: positionSideFromCloseOrder(row.side),
     entryReasonId: null,
     exitReasonId: null,
-    entryAt: new Date(Number(row.createdTime)),
-    exitAt: new Date(Number(row.updatedTime)),
+    entryAt: new Date(entryMs),
+    exitAt: new Date(exitMs),
     leverage: Math.max(0.01, parseFloat(row.leverage || '1') || 1),
     entryPrice,
     exitPrice,

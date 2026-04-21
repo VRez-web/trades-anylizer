@@ -23,6 +23,11 @@ export const reasons = sqliteTable('reasons', {
   createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
 })
 
+export const mergeGroups = sqliteTable('merge_groups', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
+})
+
 export const trades = sqliteTable(
   'trades',
   {
@@ -45,6 +50,12 @@ export const trades = sqliteTable(
     noteSystem: text('note_system'),
     noteTechnique: text('note_technique'),
     noteAnalysis: text('note_analysis'),
+    noteSystemTs: text('note_system_ts'),
+    noteTechniqueTs: text('note_technique_ts'),
+    noteAnalysisTs: text('note_analysis_ts'),
+    mergeGroupId: integer('merge_group_id').references(() => mergeGroups.id, { onDelete: 'set null' }),
+    /** JSON: {"sourceIds":[1,2,3]} — исходные id до слияния (строки удалены). */
+    mergedFrom: text('merged_from'),
     createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
     updatedAt: integer('updated_at', { mode: 'timestamp' }).notNull(),
   },
@@ -89,4 +100,4 @@ export const strategyDoc = sqliteTable('strategy_doc', {
   updatedAt: integer('updated_at', { mode: 'timestamp' }).notNull(),
 })
 
-export const schema = { labelDefs, periodNotes, reasons, strategyDoc, tradeLabelLinks, trades }
+export const schema = { labelDefs, mergeGroups, periodNotes, reasons, strategyDoc, tradeLabelLinks, trades }

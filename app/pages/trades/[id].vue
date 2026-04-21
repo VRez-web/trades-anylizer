@@ -35,6 +35,18 @@ const priceMoveNonNegative = computed(() => {
   return r >= 0
 })
 
+/** Ноги для графика (после merge в БД хранятся в merged_from.legs). */
+const mergeLegsForChart = computed(() => {
+  const legs = data.value?.trade?.mergedFrom?.legs
+  if (!legs?.length) return undefined
+  return legs.map((l) => ({
+    entryAt: l.entryAt,
+    exitAt: l.exitAt,
+    entryPrice: l.entryPrice,
+    exitPrice: l.exitPrice,
+  }))
+})
+
 const form = reactive({
   symbol: '',
   side: 'long' as 'long' | 'short',
@@ -50,6 +62,7 @@ const form = reactive({
   noteSystem: '',
   noteTechnique: '',
   noteAnalysis: '',
+  noteTsText: '',
   labelIds: {
     system: [] as number[],
     technique: [] as number[],
@@ -100,6 +113,10 @@ watch(
     form.noteSystem = t.noteSystem ?? ''
     form.noteTechnique = t.noteTechnique ?? ''
     form.noteAnalysis = t.noteAnalysis ?? ''
+    const tsParts = [t.noteSystemTs, t.noteTechniqueTs, t.noteAnalysisTs]
+      .map((x) => (x ?? '').trim())
+      .filter((x) => x.length > 0)
+    form.noteTsText = tsParts.join('\n\n')
     const lb = d.labels as
       | { system: { id: number }[]; technique: { id: number }[]; psychology: { id: number }[] }
       | undefined
@@ -151,11 +168,34 @@ onUnmounted(() => {
 
 function isoLocal(d: Date) {
   const pad = (n: number) => String(n).padStart(2, '0')
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`
 }
 
 function fmtWhen(iso: string) {
-  return new Date(iso).toLocaleString('ru-RU', { dateStyle: 'short', timeStyle: 'short' })
+  return new Date(iso).toLocaleString('ru-RU', {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    fractionalSecondDigits: 3,
+  })
+}
+
+const showTsAnalysisFields = ref(false)
+const unmerging = ref(false)
+
+async function unmergeGroup() {
+  const gid = data.value?.trade?.mergeGroupId
+  if (gid == null) return
+  unmerging.value = true
+  try {
+    await $fetch('/api/trades/unmerge', { method: 'POST', body: { mergeGroupId: gid } })
+    await refresh()
+  } finally {
+    unmerging.value = false
+  }
 }
 
 const isFromSync = computed(() => Boolean(data.value?.trade?.externalKey))
@@ -196,6 +236,9 @@ async function save() {
           noteSystem: form.noteSystem,
           noteTechnique: form.noteTechnique,
           noteAnalysis: form.noteAnalysis,
+          noteSystemTs: null,
+          noteTechniqueTs: null,
+          noteAnalysisTs: form.noteTsText.trim() || null,
           labelIds,
         },
       })
@@ -217,6 +260,9 @@ async function save() {
           noteSystem: form.noteSystem,
           noteTechnique: form.noteTechnique,
           noteAnalysis: form.noteAnalysis,
+          noteSystemTs: null,
+          noteTechniqueTs: null,
+          noteAnalysisTs: form.noteTsText.trim() || null,
           labelIds,
         },
       })
@@ -256,6 +302,31 @@ async function save() {
       </p>
       <p v-if="!data.trade.externalKey && quoteVolPreview != null" class="vol-hint muted">
         Для ручной сделки объём — оценка по доходу и движению цены.
+      </p>
+
+      <p v-if="data.trade.mergeGroupId != null" class="merge-strip">
+        <span class="muted">Старая группа ({{ data.trade.mergeGroupId }})</span>
+        <span v-if="data.mergeGroupTrades?.length" class="merge-sibs">
+          <NuxtLink
+            v-for="s in data.mergeGroupTrades"
+            :key="s.id"
+            :to="`/trades/${s.id}`"
+            class="merge-sib-link"
+          >
+            #{{ s.id }} ({{ fmtUsdt(s.net) }})
+          </NuxtLink>
+        </span>
+        <button type="button" class="btn btn-tiny" :disabled="unmerging" @click="unmergeGroup">
+          Разъединить
+        </button>
+      </p>
+
+      <p v-else-if="data.trade.mergedFrom?.sourceIds?.length" class="merge-strip merged-from-strip">
+        <span class="muted">Слияние:</span>
+        <span class="merged-ids">{{
+          data.trade.mergedFrom.sourceIds.map((id: number) => `#${id}`).join(', ')
+        }}</span>
+        <span class="muted tiny-hint">исходные сделки удалены, это одна агрегированная запись</span>
       </p>
 
       <template v-if="isFromSync">
@@ -314,6 +385,7 @@ async function save() {
             :exit-at="data.trade.exitAt"
             :entry-price="data.trade.entryPrice"
             :exit-price="data.trade.exitPrice"
+            :merge-legs="mergeLegsForChart"
             :height="300"
           />
           <TradeRrCalculator
@@ -351,11 +423,11 @@ async function save() {
             </div>
             <div>
               <label class="label">Вход</label>
-              <input v-model="form.entryAt" class="input" type="datetime-local" />
+              <input v-model="form.entryAt" class="input" type="datetime-local" step="1" />
             </div>
             <div>
               <label class="label">Выход</label>
-              <input v-model="form.exitAt" class="input" type="datetime-local" />
+              <input v-model="form.exitAt" class="input" type="datetime-local" step="1" />
             </div>
             <div>
               <label class="label">Плечо</label>
@@ -383,7 +455,12 @@ async function save() {
             </div>
           </div>
 
-          <div class="notes-grid">
+          <label class="ts-toggle row">
+            <input v-model="showTsAnalysisFields" type="checkbox" />
+            <span>Редактировать блок анализа «ТС» (отдельно от общего)</span>
+          </label>
+
+          <div v-show="!showTsAnalysisFields" class="notes-grid">
             <div class="note-cell">
               <div class="label note-label">
                 <LabelWithHint :lines="tradeNoteHints.system">Система</LabelWithHint>
@@ -426,6 +503,11 @@ async function save() {
               />
               <textarea v-model="form.noteAnalysis" class="textarea textarea-dense" rows="7" placeholder="…" />
             </div>
+          </div>
+
+          <div v-show="showTsAnalysisFields" class="note-cell ts-single">
+            <div class="label note-label">Анализ «ТС»</div>
+            <textarea v-model="form.noteTsText" class="textarea textarea-dense" rows="14" placeholder="…" />
           </div>
 
           <button type="button" class="btn btn-primary btn-save" :disabled="saving" @click="save">
@@ -596,5 +678,38 @@ async function save() {
 }
 .manual-grid {
   margin-top: 0.35rem;
+}
+.ts-toggle {
+  align-items: flex-start;
+  gap: 0.5rem;
+  margin: 0.5rem 0 0.65rem;
+  font-size: 0.8125rem;
+  cursor: pointer;
+}
+.ts-toggle input {
+  margin-top: 0.2rem;
+}
+.ts-single {
+  margin-top: 0.65rem;
+}
+.merge-strip {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 0.75rem;
+  margin: 0.5rem 0 0;
+  font-size: 0.8125rem;
+}
+.merge-sibs {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 0.35rem 0.65rem;
+}
+.merge-sib-link {
+  font-weight: 600;
+}
+.merged-from-strip .merged-ids {
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
 }
 </style>

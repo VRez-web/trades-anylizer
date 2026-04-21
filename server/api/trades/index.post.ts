@@ -35,6 +35,9 @@ function parseBody(body: Record<string, unknown>) {
     noteSystem: body.noteSystem != null ? String(body.noteSystem) : null,
     noteTechnique: body.noteTechnique != null ? String(body.noteTechnique) : null,
     noteAnalysis: body.noteAnalysis != null ? String(body.noteAnalysis) : null,
+    noteSystemTs: body.noteSystemTs != null ? String(body.noteSystemTs) : null,
+    noteTechniqueTs: body.noteTechniqueTs != null ? String(body.noteTechniqueTs) : null,
+    noteAnalysisTs: body.noteAnalysisTs != null ? String(body.noteAnalysisTs) : null,
     createdAt: now,
     updatedAt: now,
   }

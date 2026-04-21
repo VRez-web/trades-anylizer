@@ -94,8 +94,39 @@ CREATE TABLE \`trade_label_links\` (
 	FOREIGN KEY (\`label_id\`) REFERENCES \`label_defs\`(\`id\`) ON DELETE CASCADE ON UPDATE no action
 );
 `
+const migration6 = `
+CREATE TABLE \`merge_groups\` (
+	\`id\` integer PRIMARY KEY AUTOINCREMENT NOT NULL,
+	\`created_at\` integer NOT NULL
+);
+--> statement-breakpoint
+ALTER TABLE \`trades\` ADD COLUMN \`note_system_ts\` text;
+--> statement-breakpoint
+ALTER TABLE \`trades\` ADD COLUMN \`note_technique_ts\` text;
+--> statement-breakpoint
+ALTER TABLE \`trades\` ADD COLUMN \`note_analysis_ts\` text;
+--> statement-breakpoint
+ALTER TABLE \`trades\` ADD COLUMN \`merge_group_id\` integer REFERENCES \`merge_groups\`(\`id\`) ON DELETE SET NULL ON UPDATE no action;
+`
+const migration7 = `
+UPDATE trades SET exit_at = exit_at + 1
+WHERE entry_at = exit_at AND external_key IS NOT NULL;
+`
+const migration8 = `
+ALTER TABLE \`trades\` ADD COLUMN \`merged_from\` text;
+`
 
-const MIGRATIONS = [migration0, migration1, migration2, migration3, migration4, migration5]
+const MIGRATIONS = [
+  migration0,
+  migration1,
+  migration2,
+  migration3,
+  migration4,
+  migration5,
+  migration6,
+  migration7,
+  migration8,
+]
 
 function splitMigration(sql: string) {
   return sql.split(/-->\s*statement-breakpoint\s*/g).map((s) => s.trim()).filter(Boolean)

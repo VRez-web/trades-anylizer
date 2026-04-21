@@ -11,7 +11,7 @@ function shiftDay(delta: number) {
   router.push(`/trades/day/${format(d, 'yyyy-MM-dd')}`)
 }
 
-const { data: trades } = await useFetch(
+const { data: trades, refresh } = await useFetch(
   () => `/api/trades?day=${encodeURIComponent(date.value)}`,
   { watch: [date] },
 )
@@ -69,6 +69,62 @@ const journalDayUrl = computed(() => `/journal/day?date=${encodeURIComponent(dat
 function goTrade(id: number) {
   navigateTo(`/trades/${id}`)
 }
+
+function fmtTradeTime(iso: string) {
+  return new Date(iso).toLocaleString('ru-RU', { dateStyle: 'short', timeStyle: 'medium' })
+}
+
+const selectedForMerge = ref<number[]>([])
+
+function toggleMergeSelect(id: number, mergeGroupId: number | null | undefined) {
+  if (mergeGroupId != null) return
+  const i = selectedForMerge.value.indexOf(id)
+  if (i === -1) selectedForMerge.value = [...selectedForMerge.value, id]
+  else selectedForMerge.value = selectedForMerge.value.filter((x) => x !== id)
+}
+
+function isSelectedForMerge(id: number) {
+  return selectedForMerge.value.includes(id)
+}
+
+const merging = ref(false)
+
+async function mergeSelected() {
+  const ids = selectedForMerge.value
+  if (ids.length < 2) return
+  merging.value = true
+  try {
+    const res = await $fetch<{ tradeId: number }>('/api/trades/merge', {
+      method: 'POST',
+      body: { tradeIds: ids },
+    })
+    selectedForMerge.value = []
+    await refresh()
+    if (res?.tradeId) await navigateTo(`/trades/${res.tradeId}`)
+  } catch (e: unknown) {
+    const msg =
+      e && typeof e === 'object' && 'data' in e
+        ? String((e as { data?: { statusMessage?: string } }).data?.statusMessage ?? '')
+        : ''
+    alert(msg || 'Не удалось объединить')
+  } finally {
+    merging.value = false
+  }
+}
+
+const unmergingId = ref<number | null>(null)
+
+async function unmergeGroup(mergeGroupId: number) {
+  unmergingId.value = mergeGroupId
+  try {
+    await $fetch('/api/trades/unmerge', { method: 'POST', body: { mergeGroupId } })
+    await refresh()
+  } catch {
+    /* ignore */
+  } finally {
+    unmergingId.value = null
+  }
+}
 </script>
 
 <template>
@@ -113,20 +169,36 @@ function goTrade(id: number) {
       </template>
     </p>
 
-    <h2 style="font-size: 1rem; margin: 1.25rem 0 0.5rem">Сделки</h2>
+    <div class="h2-row">
+      <h2 style="font-size: 1rem; margin: 0">Сделки</h2>
+      <button
+        type="button"
+        class="btn btn-tiny"
+        :disabled="merging || selectedForMerge.length < 2"
+        @click="mergeSelected"
+      >
+        Объединить выбранные ({{ selectedForMerge.length }})
+      </button>
+    </div>
     <div v-if="!trades?.length" class="muted">Пусто</div>
     <table v-else class="tbl">
       <thead>
         <tr>
+          <th class="merge-col" />
+          <th class="ord-col" title="Порядок по времени входа">#</th>
           <th>Тикер</th>
           <th>Сторона</th>
+          <th>Вход</th>
+          <th>Выход</th>
           <th>Чистый</th>
-          <th>Анализ</th>
+          <th>Общий</th>
+          <th>ТС</th>
+          <th>Слияние</th>
         </tr>
       </thead>
       <tbody>
         <tr
-          v-for="t in trades"
+          v-for="(t, i) in trades"
           :key="t.id"
           class="trade-row"
           tabindex="0"
@@ -135,16 +207,48 @@ function goTrade(id: number) {
           @click="goTrade(t.id)"
           @keydown.enter.prevent="goTrade(t.id)"
         >
+          <td class="merge-col" @click.stop>
+            <input
+              v-if="!t.mergeGroupId && !t.mergedFrom"
+              type="checkbox"
+              :checked="isSelectedForMerge(t.id)"
+              :aria-label="`Выбрать сделку ${t.id}`"
+              @change="toggleMergeSelect(t.id, t.mergeGroupId)"
+            />
+          </td>
+          <td class="ord-col muted" title="Порядок по времени входа">{{ i + 1 }}</td>
           <td class="trade-symbol">{{ t.symbol }}</td>
           <td>{{ t.side }}</td>
+          <td class="time-t">{{ fmtTradeTime(t.entryAt) }}</td>
+          <td class="time-t">{{ fmtTradeTime(t.exitAt) }}</td>
           <td :class="t.net >= 0 ? 'pos' : 'neg'">
             {{ fmtUsdt(t.net) }}
             <span v-if="tradePricePct(t)" class="net-pct-bracket muted"> ({{ tradePricePct(t) }})</span>
           </td>
           <td>
-            <span class="analysis-cell" :class="t.analysisDone ? 'yes' : 'no'">{{
-              t.analysisDone ? 'да' : 'нет'
+            <span class="analysis-cell" :class="t.generalAnalysisDone ? 'yes' : 'no'">{{
+              t.generalAnalysisDone ? 'да' : 'нет'
             }}</span>
+          </td>
+          <td>
+            <span class="analysis-cell" :class="t.tsAnalysisDone ? 'yes' : 'no'">{{
+              t.tsAnalysisDone ? 'да' : 'нет'
+            }}</span>
+          </td>
+          <td class="grp-cell" @click.stop>
+            <template v-if="t.mergeGroupId">
+              <span class="grp-badge">гр. {{ t.mergeGroupId }}</span>
+              <button
+                type="button"
+                class="btn btn-tiny btn-unmerge"
+                :disabled="unmergingId === t.mergeGroupId"
+                @click="unmergeGroup(t.mergeGroupId)"
+              >
+                Разъединить
+              </button>
+            </template>
+            <span v-else-if="t.mergedFrom?.sourceIds?.length" class="grp-badge merged-badge">объединена</span>
+            <span v-else class="muted">—</span>
           </td>
         </tr>
       </tbody>
@@ -260,5 +364,43 @@ function goTrade(id: number) {
 }
 .analysis-cell.no {
   color: var(--muted);
+}
+.h2-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin: 1.25rem 0 0.5rem;
+}
+.merge-col {
+  width: 2rem;
+  vertical-align: middle;
+  text-align: center;
+}
+.time-t {
+  font-variant-numeric: tabular-nums;
+  font-size: 0.8125rem;
+  white-space: nowrap;
+}
+.ord-col {
+  width: 2rem;
+  text-align: center;
+  font-size: 0.8125rem;
+  font-variant-numeric: tabular-nums;
+}
+.grp-cell {
+  vertical-align: middle;
+  font-size: 0.8125rem;
+}
+.grp-badge {
+  font-weight: 600;
+  margin-right: 0.35rem;
+}
+.btn-unmerge {
+  margin-top: 0.15rem;
+}
+.merged-badge {
+  font-size: 0.75rem;
 }
 </style>

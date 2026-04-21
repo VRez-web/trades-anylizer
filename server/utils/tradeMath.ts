@@ -11,10 +11,38 @@ export function durationMs(t: TradeRow) {
   return t.exitAt.getTime() - t.entryAt.getTime()
 }
 
-export function isAnalysisComplete(t: TradeRow) {
+function tripletFilled(
+  a: string | null | undefined,
+  b: string | null | undefined,
+  c: string | null | undefined,
+) {
   return (
-    (t.noteSystem ?? '').trim().length > 0 &&
-    (t.noteTechnique ?? '').trim().length > 0 &&
-    (t.noteAnalysis ?? '').trim().length > 0
+    (a ?? '').trim().length > 0 &&
+    (b ?? '').trim().length > 0 &&
+    (c ?? '').trim().length > 0
   )
+}
+
+/** Блок ТС: три поля подряд или одна общая textarea (только note_analysis_ts). */
+function tsBlockFilled(t: TradeRow) {
+  if (tripletFilled(t.noteSystemTs, t.noteTechniqueTs, t.noteAnalysisTs)) return true
+  const s = (t.noteSystemTs ?? '').trim()
+  const tech = (t.noteTechniqueTs ?? '').trim()
+  const psy = (t.noteAnalysisTs ?? '').trim()
+  return s === '' && tech === '' && psy.length > 0
+}
+
+/** Заполнен блок «общий» (система / техника / психология). */
+export function isGeneralAnalysisComplete(t: TradeRow) {
+  return tripletFilled(t.noteSystem, t.noteTechnique, t.noteAnalysis)
+}
+
+/** Заполнен блок «ТС». */
+export function isTsAnalysisComplete(t: TradeRow) {
+  return tsBlockFilled(t)
+}
+
+/** Заполнен блок «общий» или блок «ТС» (оба набора полей независимы). */
+export function isAnalysisComplete(t: TradeRow) {
+  return isGeneralAnalysisComplete(t) || isTsAnalysisComplete(t)
 }
