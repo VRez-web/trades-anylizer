@@ -1,7 +1,8 @@
 import { sql, and, eq, inArray, like, asc, gte, lte } from 'drizzle-orm'
 import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3'
 import { format, getISOWeekYear, getISOWeek } from 'date-fns'
-import { trades, reasons, periodNotes } from '../database/schema'
+import { trades, reasons, periodNotes, labelDefs, tradeLabelLinks } from '../database/schema'
+import type { LabelKind } from '../database/schema'
 import { netProfit, type TradeRow } from './tradeMath'
 import type * as schema from '../database/schema'
 
@@ -82,6 +83,29 @@ export async function equitySeries(db: Db) {
     })
   }
   return points
+}
+
+export async function pnlByLabelInMonth(db: Db, kind: LabelKind, year: number, monthIndex1: number) {
+  const { from, to } = localMonthBounds(year, monthIndex1 - 1)
+  const netExpr = sql`${trades.income} - ${trades.commission} + ${trades.funding}`
+  const rows = await db
+    .select({
+      labelId: labelDefs.id,
+      labelText: labelDefs.label,
+      sumNet: sql<number>`coalesce(sum(${netExpr}), 0)`,
+    })
+    .from(trades)
+    .innerJoin(tradeLabelLinks, eq(trades.id, tradeLabelLinks.tradeId))
+    .innerJoin(labelDefs, eq(tradeLabelLinks.labelId, labelDefs.id))
+    .where(
+      and(eq(labelDefs.kind, kind), gte(trades.exitAt, from), lte(trades.exitAt, to)),
+    )
+    .groupBy(labelDefs.id, labelDefs.label)
+  return rows.map((r) => ({
+    labelId: r.labelId,
+    label: r.labelText,
+    sum: r.sumNet,
+  }))
 }
 
 export async function pnlByReason(db: Db, kind: 'entry' | 'exit') {

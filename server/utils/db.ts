@@ -76,8 +76,26 @@ ALTER TABLE trades ADD COLUMN entry_notional_usdt real;
 const migration4 = `
 ALTER TABLE period_notes ADD COLUMN trade_plan text NOT NULL DEFAULT '';
 `
+const migration5 = `
+CREATE TABLE \`label_defs\` (
+	\`id\` integer PRIMARY KEY AUTOINCREMENT NOT NULL,
+	\`kind\` text NOT NULL,
+	\`label\` text NOT NULL,
+	\`created_at\` integer NOT NULL
+);
+--> statement-breakpoint
+CREATE UNIQUE INDEX \`label_defs_kind_label\` ON \`label_defs\` (\`kind\`,\`label\`);
+--> statement-breakpoint
+CREATE TABLE \`trade_label_links\` (
+	\`trade_id\` integer NOT NULL,
+	\`label_id\` integer NOT NULL,
+	PRIMARY KEY (\`trade_id\`, \`label_id\`),
+	FOREIGN KEY (\`trade_id\`) REFERENCES \`trades\`(\`id\`) ON DELETE CASCADE ON UPDATE no action,
+	FOREIGN KEY (\`label_id\`) REFERENCES \`label_defs\`(\`id\`) ON DELETE CASCADE ON UPDATE no action
+);
+`
 
-const MIGRATIONS = [migration0, migration1, migration2, migration3, migration4]
+const MIGRATIONS = [migration0, migration1, migration2, migration3, migration4, migration5]
 
 function splitMigration(sql: string) {
   return sql.split(/-->\s*statement-breakpoint\s*/g).map((s) => s.trim()).filter(Boolean)
@@ -107,6 +125,7 @@ export function useDb() {
   const dbPath = join(dir, 'app.db')
   const sqlite = new Database(dbPath)
   sqlite.pragma('journal_mode = WAL')
+  sqlite.pragma('foreign_keys = ON')
   migrateSqlite(sqlite)
   const db = drizzle(sqlite, { schema: appSchema })
   const rows = sqlite.prepare('SELECT id FROM strategy_doc WHERE id = 1').all()

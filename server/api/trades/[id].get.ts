@@ -1,7 +1,8 @@
 import { eq } from 'drizzle-orm'
 import { useDb } from '../../utils/db'
-import { trades, reasons } from '../../database/schema'
+import { trades, labelDefs, tradeLabelLinks } from '../../database/schema'
 import { serializeTrade } from '../../utils/serialize'
+import type { LabelKind } from '../../database/schema'
 
 export default defineEventHandler(async (event) => {
   const id = Number(getRouterParam(event, 'id'))
@@ -9,15 +10,18 @@ export default defineEventHandler(async (event) => {
   const db = useDb()
   const [t] = await db.select().from(trades).where(eq(trades.id, id))
   if (!t) throw createError({ statusCode: 404 })
-  let entryReason: { id: number; label: string } | null = null
-  let exitReason: { id: number; label: string } | null = null
-  if (t.entryReasonId != null) {
-    const [r] = await db.select().from(reasons).where(eq(reasons.id, t.entryReasonId))
-    if (r) entryReason = { id: r.id, label: r.label }
+  const links = await db
+    .select({ kind: labelDefs.kind, id: labelDefs.id, label: labelDefs.label })
+    .from(tradeLabelLinks)
+    .innerJoin(labelDefs, eq(tradeLabelLinks.labelId, labelDefs.id))
+    .where(eq(tradeLabelLinks.tradeId, id))
+  const labels: Record<LabelKind, { id: number; label: string }[]> = {
+    system: [],
+    technique: [],
+    psychology: [],
   }
-  if (t.exitReasonId != null) {
-    const [r] = await db.select().from(reasons).where(eq(reasons.id, t.exitReasonId))
-    if (r) exitReason = { id: r.id, label: r.label }
+  for (const r of links) {
+    labels[r.kind].push({ id: r.id, label: r.label })
   }
-  return { trade: serializeTrade(t), entryReason, exitReason }
+  return { trade: serializeTrade(t), labels }
 })

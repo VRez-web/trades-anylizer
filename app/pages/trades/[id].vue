@@ -38,8 +38,6 @@ const priceMoveNonNegative = computed(() => {
 const form = reactive({
   symbol: '',
   side: 'long' as 'long' | 'short',
-  entryReasonId: '' as string | number,
-  exitReasonId: '' as string | number,
   entryAt: '',
   exitAt: '',
   leverage: 1,
@@ -52,17 +50,44 @@ const form = reactive({
   noteSystem: '',
   noteTechnique: '',
   noteAnalysis: '',
+  labelIds: {
+    system: [] as number[],
+    technique: [] as number[],
+    psychology: [] as number[],
+  },
+})
+
+function snapshotLabelIds(): string {
+  const norm = (a: number[]) => [...a].sort((x, y) => x - y)
+  return JSON.stringify({
+    system: norm(form.labelIds.system),
+    technique: norm(form.labelIds.technique),
+    psychology: norm(form.labelIds.psychology),
+  })
+}
+
+const lastSentLabelIds = ref('')
+const labelsReady = ref(false)
+let labelDebounceTimer: ReturnType<typeof setTimeout> | null = null
+
+watch(id, () => {
+  labelsReady.value = false
+  if (labelDebounceTimer) {
+    clearTimeout(labelDebounceTimer)
+    labelDebounceTimer = null
+  }
 })
 
 watch(
   data,
   (d) => {
-    if (!d?.trade) return
+    if (!d?.trade) {
+      labelsReady.value = false
+      return
+    }
     const t = d.trade
     form.symbol = t.symbol
     form.side = t.side
-    form.entryReasonId = t.entryReasonId ?? ''
-    form.exitReasonId = t.exitReasonId ?? ''
     form.entryAt = isoLocal(new Date(t.entryAt))
     form.exitAt = isoLocal(new Date(t.exitAt))
     form.leverage = t.leverage
@@ -75,9 +100,54 @@ watch(
     form.noteSystem = t.noteSystem ?? ''
     form.noteTechnique = t.noteTechnique ?? ''
     form.noteAnalysis = t.noteAnalysis ?? ''
+    const lb = d.labels as
+      | { system: { id: number }[]; technique: { id: number }[]; psychology: { id: number }[] }
+      | undefined
+    if (lb) {
+      form.labelIds.system = lb.system.map((x) => x.id)
+      form.labelIds.technique = lb.technique.map((x) => x.id)
+      form.labelIds.psychology = lb.psychology.map((x) => x.id)
+    }
+    lastSentLabelIds.value = snapshotLabelIds()
+    labelsReady.value = true
   },
   { immediate: true },
 )
+
+watch(
+  () => snapshotLabelIds(),
+  (snap) => {
+    if (!labelsReady.value || !data.value?.trade) return
+    if (snap === lastSentLabelIds.value) return
+    if (labelDebounceTimer) clearTimeout(labelDebounceTimer)
+    labelDebounceTimer = setTimeout(async () => {
+      labelDebounceTimer = null
+      const current = snapshotLabelIds()
+      if (current !== snap) return
+      if (current === lastSentLabelIds.value) return
+      try {
+        await $fetch(`/api/trades/${id.value}`, {
+          method: 'PATCH',
+          body: {
+            labelIds: {
+              system: [...form.labelIds.system],
+              technique: [...form.labelIds.technique],
+              psychology: [...form.labelIds.psychology],
+            },
+          },
+        })
+        lastSentLabelIds.value = snapshotLabelIds()
+        await refresh()
+      } catch {
+        /* сеть */
+      }
+    }, 450)
+  },
+)
+
+onUnmounted(() => {
+  if (labelDebounceTimer) clearTimeout(labelDebounceTimer)
+})
 
 function isoLocal(d: Date) {
   const pad = (n: number) => String(n).padStart(2, '0')
@@ -90,28 +160,43 @@ function fmtWhen(iso: string) {
 
 const isFromSync = computed(() => Boolean(data.value?.trade?.externalKey))
 
-const { data: reasonsEntry, refresh: refreshReasonsEntry } = await useFetch('/api/reasons', {
-  query: { kind: 'entry' },
-})
-const { data: reasonsExit, refresh: refreshReasonsExit } = await useFetch('/api/reasons', {
-  query: { kind: 'exit' },
-})
+const { data: allLabels, refresh: refreshAllLabels } = await useFetch('/api/labels')
+
+const optionsSystem = computed(() =>
+  (allLabels.value ?? [])
+    .filter((x: { kind: string }) => x.kind === 'system')
+    .map((x: { id: number; label: string }) => ({ id: x.id, label: x.label })),
+)
+const optionsTechnique = computed(() =>
+  (allLabels.value ?? [])
+    .filter((x: { kind: string }) => x.kind === 'technique')
+    .map((x: { id: number; label: string }) => ({ id: x.id, label: x.label })),
+)
+const optionsPsychology = computed(() =>
+  (allLabels.value ?? [])
+    .filter((x: { kind: string }) => x.kind === 'psychology')
+    .map((x: { id: number; label: string }) => ({ id: x.id, label: x.label })),
+)
 
 const saving = ref(false)
 
 async function save() {
   saving.value = true
   try {
+    const labelIds = {
+      system: form.labelIds.system,
+      technique: form.labelIds.technique,
+      psychology: form.labelIds.psychology,
+    }
     if (isFromSync.value) {
       await $fetch(`/api/trades/${id.value}`, {
         method: 'PATCH',
         body: {
-          entryReasonId: form.entryReasonId === '' ? null : Number(form.entryReasonId),
-          exitReasonId: form.exitReasonId === '' ? null : Number(form.exitReasonId),
           rr: form.rr === '' ? null : Number(form.rr),
           noteSystem: form.noteSystem,
           noteTechnique: form.noteTechnique,
           noteAnalysis: form.noteAnalysis,
+          labelIds,
         },
       })
     } else {
@@ -120,8 +205,6 @@ async function save() {
         body: {
           symbol: form.symbol,
           side: form.side,
-          entryReasonId: form.entryReasonId === '' ? null : Number(form.entryReasonId),
-          exitReasonId: form.exitReasonId === '' ? null : Number(form.exitReasonId),
           entryAt: new Date(form.entryAt).toISOString(),
           exitAt: new Date(form.exitAt).toISOString(),
           leverage: form.leverage,
@@ -134,6 +217,7 @@ async function save() {
           noteSystem: form.noteSystem,
           noteTechnique: form.noteTechnique,
           noteAnalysis: form.noteAnalysis,
+          labelIds,
         },
       })
     }
@@ -232,6 +316,11 @@ async function save() {
             :exit-price="data.trade.exitPrice"
             :height="300"
           />
+          <TradeRrCalculator
+            :side="data.trade.side"
+            :entry-price="data.trade.entryPrice"
+            @apply-rr="form.rr = $event"
+          />
           <template #fallback>
             <div class="muted chart-fallback">Загрузка графика…</div>
           </template>
@@ -240,31 +329,12 @@ async function save() {
 
       <div class="trade-split__editor">
         <div class="card trade-params-card">
-          <div class="meta-bar">
-            <div class="meta-item">
-              <span class="meta-lbl">Вход</span>
-              <ReasonCombobox
-                v-model="form.entryReasonId"
-                kind="entry"
-                :options="reasonsEntry ?? []"
-                input-class="input input-tight"
-                @refresh="refreshReasonsEntry"
-              />
-            </div>
-            <div class="meta-item">
-              <span class="meta-lbl">Выход</span>
-              <ReasonCombobox
-                v-model="form.exitReasonId"
-                kind="exit"
-                :options="reasonsExit ?? []"
-                input-class="input input-tight"
-                @refresh="refreshReasonsExit"
-              />
-            </div>
-            <div class="meta-item meta-rr">
+          <div class="meta-rr-row">
+            <label class="meta-rr-label">
               <span class="meta-lbl">RR</span>
               <input v-model="form.rr" class="input input-tight" type="number" step="0.01" placeholder="—" />
-            </div>
+            </label>
+            <span class="muted meta-rr-hint">можно взять с графика (блок «Расчёт RR»)</span>
           </div>
 
           <div v-if="!isFromSync" class="grid2 manual-grid">
@@ -318,18 +388,42 @@ async function save() {
               <div class="label note-label">
                 <LabelWithHint :lines="tradeNoteHints.system">Система</LabelWithHint>
               </div>
+              <LabelMultiCombobox
+                v-model="form.labelIds.system"
+                kind="system"
+                :options="optionsSystem"
+                input-class="input input-tight"
+                class="label-row"
+                @refresh="refreshAllLabels"
+              />
               <textarea v-model="form.noteSystem" class="textarea textarea-dense" rows="7" placeholder="…" />
             </div>
             <div class="note-cell">
               <div class="label note-label">
                 <LabelWithHint :lines="tradeNoteHints.technique">Техника</LabelWithHint>
               </div>
+              <LabelMultiCombobox
+                v-model="form.labelIds.technique"
+                kind="technique"
+                :options="optionsTechnique"
+                input-class="input input-tight"
+                class="label-row"
+                @refresh="refreshAllLabels"
+              />
               <textarea v-model="form.noteTechnique" class="textarea textarea-dense" rows="7" placeholder="…" />
             </div>
             <div class="note-cell">
               <div class="label note-label">
                 <LabelWithHint :lines="tradeNoteHints.psychology">Психология</LabelWithHint>
               </div>
+              <LabelMultiCombobox
+                v-model="form.labelIds.psychology"
+                kind="psychology"
+                :options="optionsPsychology"
+                input-class="input input-tight"
+                class="label-row"
+                @refresh="refreshAllLabels"
+              />
               <textarea v-model="form.noteAnalysis" class="textarea textarea-dense" rows="7" placeholder="…" />
             </div>
           </div>
@@ -425,23 +519,25 @@ async function save() {
   font-size: 0.7rem;
   margin-left: 0.15rem;
 }
-.meta-bar {
-  display: grid;
-  grid-template-columns: 1fr 1fr 4.25rem;
-  gap: 0.35rem 0.5rem;
-  align-items: end;
+.meta-rr-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 0.5rem 1rem;
   margin-bottom: 0.6rem;
 }
-@media (max-width: 560px) {
-  .meta-bar {
-    grid-template-columns: 1fr;
-  }
-  .meta-rr {
-    max-width: 6rem;
-  }
-}
-.meta-item {
+.meta-rr-label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
   min-width: 0;
+}
+.meta-rr-hint {
+  font-size: 0.72rem;
+  padding-bottom: 0.2rem;
+}
+.label-row {
+  margin-bottom: 0.4rem;
 }
 .meta-lbl {
   display: block;

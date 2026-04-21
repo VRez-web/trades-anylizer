@@ -1,5 +1,7 @@
 import { useDb } from '../../utils/db'
 import { trades } from '../../database/schema'
+import { parseLabelIds } from '../../utils/labelIdsBody'
+import { replaceTradeLabels } from '../../utils/tradeLabels'
 
 function parseBody(body: Record<string, unknown>) {
   const symbol = String(body.symbol ?? '')
@@ -39,9 +41,11 @@ function parseBody(body: Record<string, unknown>) {
 }
 
 export default defineEventHandler(async (event) => {
-  const body = await readBody(event)
-  const row = parseBody(body as Record<string, unknown>)
+  const body = await readBody(event) as Record<string, unknown>
+  const row = parseBody(body)
   const db = useDb()
   const [inserted] = await db.insert(trades).values(row).returning()
+  const packs = parseLabelIds(body)
+  if (packs && inserted) await replaceTradeLabels(db, inserted.id, packs)
   return inserted
 })

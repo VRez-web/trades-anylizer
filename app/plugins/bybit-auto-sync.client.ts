@@ -5,9 +5,11 @@
 export default defineNuxtPlugin(async () => {
   const flag = 'trades-analyzer-bybit-sync-session'
   if (typeof sessionStorage !== 'undefined' && sessionStorage.getItem(flag)) return
+  const loading = useBybitSyncLoading()
   try {
     const me = await $fetch('/api/auth/me')
     if (!me.authed) return
+    loading.value.active = true
     await $fetch('/api/sync/bybit', {
       method: 'POST',
       body: { days: 365 },
@@ -16,5 +18,7 @@ export default defineNuxtPlugin(async () => {
     await refreshNuxtData()
   } catch {
     // нет NUXT_BYBIT_* ключей, сеть, ответ Bybit
+  } finally {
+    loading.value.active = false
   }
 })

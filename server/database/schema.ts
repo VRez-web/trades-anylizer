@@ -1,4 +1,20 @@
-import { sqliteTable, integer, text, real, uniqueIndex } from 'drizzle-orm/sqlite-core'
+import { sqliteTable, integer, text, real, uniqueIndex, primaryKey } from 'drizzle-orm/sqlite-core'
+
+export const labelKindEnum = ['system', 'technique', 'psychology'] as const
+export type LabelKind = (typeof labelKindEnum)[number]
+
+export const labelDefs = sqliteTable(
+  'label_defs',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    kind: text('kind', { enum: labelKindEnum }).notNull(),
+    label: text('label').notNull(),
+    createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
+  },
+  (t) => ({
+    kindLabelIdx: uniqueIndex('label_defs_kind_label').on(t.kind, t.label),
+  }),
+)
 
 export const reasons = sqliteTable('reasons', {
   id: integer('id').primaryKey({ autoIncrement: true }),
@@ -37,6 +53,21 @@ export const trades = sqliteTable(
   }),
 )
 
+export const tradeLabelLinks = sqliteTable(
+  'trade_label_links',
+  {
+    tradeId: integer('trade_id')
+      .notNull()
+      .references(() => trades.id, { onDelete: 'cascade' }),
+    labelId: integer('label_id')
+      .notNull()
+      .references(() => labelDefs.id, { onDelete: 'cascade' }),
+  },
+  (t) => ({
+    pk: primaryKey({ columns: [t.tradeId, t.labelId] }),
+  }),
+)
+
 export const periodNotes = sqliteTable(
   'period_notes',
   {
@@ -58,4 +89,4 @@ export const strategyDoc = sqliteTable('strategy_doc', {
   updatedAt: integer('updated_at', { mode: 'timestamp' }).notNull(),
 })
 
-export const schema = { periodNotes, reasons, strategyDoc, trades }
+export const schema = { labelDefs, periodNotes, reasons, strategyDoc, tradeLabelLinks, trades }

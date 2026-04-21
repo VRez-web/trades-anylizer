@@ -1,20 +1,47 @@
 <script setup lang="ts">
+const CALENDAR_YM_KEY = 'trades-analyzer:calendar-ym'
+
 const now = new Date()
 const year = ref(now.getFullYear())
 const month = ref(now.getMonth() + 1)
+/** После onMounted — чтобы не перезаписать localStorage до чтения и не ломать гидрацию */
+const calendarPersistReady = ref(false)
+
+onMounted(() => {
+  try {
+    const raw = localStorage.getItem(CALENDAR_YM_KEY)
+    if (raw) {
+      const j = JSON.parse(raw) as { year?: number; month?: number }
+      const yy = Number(j.year)
+      const mm = Number(j.month)
+      if (Number.isFinite(yy) && yy >= 1970 && yy <= 2100 && Number.isFinite(mm) && mm >= 1 && mm <= 12) {
+        year.value = yy
+        month.value = mm
+      }
+    }
+  } catch {
+    /* ignore */
+  }
+  calendarPersistReady.value = true
+  localStorage.setItem(CALENDAR_YM_KEY, JSON.stringify({ year: year.value, month: month.value }))
+})
+
+watch([year, month], ([yy, mm]) => {
+  if (!import.meta.client || !calendarPersistReady.value) return
+  localStorage.setItem(CALENDAR_YM_KEY, JSON.stringify({ year: yy, month: mm }))
+})
 
 const calendarUrl = computed(
   () => `/api/stats/calendar?year=${year.value}&month=${month.value}`,
 )
-const { data: calendar, refresh: refreshCal } = await useFetch(calendarUrl)
+const { data: calendar } = await useFetch(calendarUrl)
 
-const { data: equity, refresh: refreshEq } = await useFetch('/api/stats/equity')
-const { data: entryReasons, refresh: refreshEntry } = await useFetch('/api/stats/by-reason', {
-  query: { kind: 'entry' },
-})
-const { data: exitReasons, refresh: refreshExit } = await useFetch('/api/stats/by-reason', {
-  query: { kind: 'exit' },
-})
+const { data: equity } = await useFetch('/api/stats/equity')
+
+const byLabelUrl = computed(
+  () => `/api/stats/by-label?year=${year.value}&month=${month.value}`,
+)
+const { data: byLabel } = await useFetch(byLabelUrl)
 
 const equityPoints = computed(() => {
   if (!equity.value) return []
@@ -24,17 +51,23 @@ const equityPoints = computed(() => {
   }))
 })
 
-const entryRows = computed(() => {
-  if (!entryReasons.value) return []
-  return entryReasons.value.map((r: { label: string; sum: number }) => ({
+const systemRows = computed(() => {
+  if (!byLabel.value?.system) return []
+  return byLabel.value.system.map((r: { label: string; sum: number }) => ({
     label: r.label,
     sum: r.sum,
   }))
 })
-
-const exitRows = computed(() => {
-  if (!exitReasons.value) return []
-  return exitReasons.value.map((r: { label: string; sum: number }) => ({
+const techniqueRows = computed(() => {
+  if (!byLabel.value?.technique) return []
+  return byLabel.value.technique.map((r: { label: string; sum: number }) => ({
+    label: r.label,
+    sum: r.sum,
+  }))
+})
+const psychologyRows = computed(() => {
+  if (!byLabel.value?.psychology) return []
+  return byLabel.value.psychology.map((r: { label: string; sum: number }) => ({
     label: r.label,
     sum: r.sum,
   }))
@@ -61,9 +94,13 @@ function goDay(date: string) {
       />
     </div>
 
+    <p class="muted bars-caption">
+      Инфографика по лейблам за выбранный месяц (дата выхода из сделки попадает в месяц).
+    </p>
     <div class="bars-row">
-      <ReasonBars title="По причинам входа" :rows="entryRows" />
-      <ReasonBars title="По причинам выхода" :rows="exitRows" />
+      <ReasonBars title="Лейблы системы" :rows="systemRows" />
+      <ReasonBars title="Лейблы техники" :rows="techniqueRows" />
+      <ReasonBars title="Лейблы психологии" :rows="psychologyRows" />
     </div>
 
     <div class="card" style="margin-top: 1rem">
@@ -84,12 +121,16 @@ function goDay(date: string) {
   min-height: 380px;
   margin-bottom: 1rem;
 }
+.bars-caption {
+  margin: 0 0 0.65rem;
+  font-size: 0.8125rem;
+}
 .bars-row {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: 1fr 1fr 1fr;
   gap: 1rem;
 }
-@media (max-width: 900px) {
+@media (max-width: 1100px) {
   .bars-row {
     grid-template-columns: 1fr;
   }

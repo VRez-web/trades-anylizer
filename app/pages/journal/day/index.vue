@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { format } from 'date-fns'
+import { defaultTradePlanTemplate } from '#shared/tradePlanTemplate'
 import type { JournalDayTrade } from '~/components/JournalDayCandleChart.vue'
 
 const route = useRoute()
@@ -23,7 +24,10 @@ watch(
   (d) => {
     if (d && typeof d === 'object') {
       if ('note' in d) note.value = (d as { note: string }).note
-      if ('tradePlan' in d) tradePlan.value = (d as { tradePlan: string }).tradePlan ?? ''
+      if ('tradePlan' in d) {
+        const raw = (d as { tradePlan: string }).tradePlan ?? ''
+        tradePlan.value = raw.trim() === '' ? defaultTradePlanTemplate : raw
+      }
     }
   },
   { immediate: true },
@@ -160,13 +164,14 @@ async function saveNote() {
         <div class="card journal-day__block">
           <h2 class="journal-day__h">Торговый план</h2>
           <p class="muted journal-day__hint">
-            План на день; в календаре сделок статус «есть / нет» берётся из этого поля.
+            План на день; в календаре сделок статус «есть / нет» берётся из этого поля. Для пустого дня в
+            поле сразу подставляется структура: A/B, метод входа, запасной сценарий, условия отмены плана.
           </p>
           <textarea
             v-model="tradePlan"
-            class="textarea"
-            rows="5"
-            placeholder="Ключевые уровни, сценарии, ограничения…"
+            class="textarea textarea-plan"
+            rows="22"
+            placeholder=""
           />
           <button type="button" class="btn btn-primary journal-day__save" @click="saveNote">
             Сохранить
@@ -299,5 +304,10 @@ async function saveNote() {
 }
 .journal-day__save {
   margin-top: 0.5rem;
+}
+.textarea-plan {
+  min-height: 22rem;
+  font-size: 0.875rem;
+  line-height: 1.45;
 }
 </style>

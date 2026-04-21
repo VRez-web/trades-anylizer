@@ -1,6 +1,8 @@
 import { eq } from 'drizzle-orm'
 import { useDb } from '../../utils/db'
 import { trades } from '../../database/schema'
+import { parseLabelIds } from '../../utils/labelIdsBody'
+import { replaceTradeLabels } from '../../utils/tradeLabels'
 
 export default defineEventHandler(async (event) => {
   const id = Number(getRouterParam(event, 'id'))
@@ -9,6 +11,7 @@ export default defineEventHandler(async (event) => {
   const db = useDb()
   const [existing] = await db.select().from(trades).where(eq(trades.id, id))
   if (!existing) throw createError({ statusCode: 404 })
+  const labelIdsPatch = parseLabelIds(body)
   const fromSync = Boolean(existing.externalKey)
   if (fromSync) {
     const blocked = [
@@ -44,6 +47,7 @@ export default defineEventHandler(async (event) => {
       patch2.noteTechnique = body.noteTechnique == null ? null : String(body.noteTechnique)
     if ('noteAnalysis' in body) patch2.noteAnalysis = body.noteAnalysis == null ? null : String(body.noteAnalysis)
     await db.update(trades).set(patch2 as never).where(eq(trades.id, id))
+    if (labelIdsPatch) await replaceTradeLabels(db, id, labelIdsPatch)
     const [row2] = await db.select().from(trades).where(eq(trades.id, id))
     return row2
   }
@@ -70,6 +74,7 @@ export default defineEventHandler(async (event) => {
     patch.noteTechnique = body.noteTechnique == null ? null : String(body.noteTechnique)
   if ('noteAnalysis' in body) patch.noteAnalysis = body.noteAnalysis == null ? null : String(body.noteAnalysis)
   await db.update(trades).set(patch as never).where(eq(trades.id, id))
+  if (labelIdsPatch) await replaceTradeLabels(db, id, labelIdsPatch)
   const [row] = await db.select().from(trades).where(eq(trades.id, id))
   return row
 })
