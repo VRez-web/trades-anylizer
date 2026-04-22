@@ -14,6 +14,8 @@ type TradeRow = {
 
 const side = ref<'all' | 'long' | 'short'>('all')
 const result = ref<'all' | 'win' | 'loss'>('all')
+/** all — без фильтра; with/without — как в isAnalysisComplete (общий и/или ТС). */
+const analysis = ref<'all' | 'with' | 'without'>('all')
 const fromDate = ref('')
 const toDate = ref('')
 const labelId = ref('')
@@ -35,6 +37,7 @@ const query = computed(() => {
   const q: Record<string, string> = { sort: sort.value }
   if (side.value !== 'all') q.side = side.value
   if (result.value !== 'all') q.result = result.value
+  if (analysis.value === 'with' || analysis.value === 'without') q.analysis = analysis.value
   if (fromDate.value) q.from = new Date(fromDate.value + 'T00:00:00').toISOString()
   if (toDate.value) q.to = new Date(toDate.value + 'T23:59:59.999').toISOString()
   const lid = Number(labelId.value)
@@ -198,6 +201,14 @@ function fmtWinRatePct(p: number | null) {
             <option value="all">Все</option>
             <option value="win">Win</option>
             <option value="loss">Loss</option>
+          </select>
+        </label>
+        <label class="fl">
+          <span class="fl-l">Анализ</span>
+          <select v-model="analysis" class="input">
+            <option value="all">Все</option>
+            <option value="with">Есть</option>
+            <option value="without">Нет</option>
           </select>
         </label>
         <label class="fl">

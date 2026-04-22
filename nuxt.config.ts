@@ -9,6 +9,8 @@ export default defineNuxtConfig({
     '#shared': fileURLToPath(new URL('./shared', import.meta.url)),
   },
   runtimeConfig: {
+    /** PostgreSQL (Supabase URI). См. `DATABASE_URL` / `NUXT_DATABASE_URL` в .env / Render. */
+    databaseUrl: process.env.DATABASE_URL || process.env.NUXT_DATABASE_URL || '',
     /** Простая авторизация: задайте оба, иначе вход отключён (все страницы и API открыты). Env: NUXT_ADMIN_USER, NUXT_ADMIN_PASSWORD */
     adminUser: '',
     adminPassword: '',

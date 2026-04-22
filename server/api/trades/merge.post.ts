@@ -5,6 +5,7 @@ import { exitDateKeyLocal } from '../../utils/stats'
 import { buildMergedTradePayload } from '../../utils/mergeTradeAggregate'
 import { replaceTradeLabels } from '../../utils/tradeLabels'
 import type { LabelKind } from '../../database/schema'
+import type { AppDatabase } from '../../types/app-database'
 
 export default defineEventHandler(async (event) => {
   const body = await readBody(event) as { tradeIds?: unknown }
@@ -60,40 +61,43 @@ export default defineEventHandler(async (event) => {
   const now = new Date()
   const payload = buildMergedTradePayload(rows, now)
 
-  /** better-sqlite3: `db.transaction(async () => …)` запрещён — колбэк должен быть синхронным. Делаем шаги по очереди. */
-  const [inserted] = await db
-    .insert(trades)
-    .values({
-      externalKey: payload.externalKey,
-      symbol: payload.symbol,
-      side: payload.side,
-      entryReasonId: null,
-      exitReasonId: null,
-      entryAt: payload.entryAt,
-      exitAt: payload.exitAt,
-      leverage: payload.leverage,
-      entryPrice: payload.entryPrice,
-      exitPrice: payload.exitPrice,
-      income: payload.income,
-      commission: payload.commission,
-      funding: payload.funding,
-      entryNotionalUsdt: payload.entryNotionalUsdt,
-      rr: null,
-      noteSystem: payload.noteSystem,
-      noteTechnique: payload.noteTechnique,
-      noteAnalysis: payload.noteAnalysis,
-      noteSystemTs: payload.noteSystemTs,
-      noteTechniqueTs: payload.noteTechniqueTs,
-      noteAnalysisTs: payload.noteAnalysisTs,
-      mergeGroupId: null,
-      mergedFrom: payload.mergedFrom,
-      createdAt: payload.createdAt,
-      updatedAt: payload.updatedAt,
-    })
-    .returning()
-  if (!inserted) throw createError({ statusCode: 500 })
-  await replaceTradeLabels(db, inserted.id, labelPacks)
-  await db.delete(trades).where(inArray(trades.id, ids))
+  let newId = 0
+  await db.transaction(async (tx) => {
+    const [inserted] = await tx
+      .insert(trades)
+      .values({
+        externalKey: payload.externalKey,
+        symbol: payload.symbol,
+        side: payload.side,
+        entryReasonId: null,
+        exitReasonId: null,
+        entryAt: payload.entryAt,
+        exitAt: payload.exitAt,
+        leverage: payload.leverage,
+        entryPrice: payload.entryPrice,
+        exitPrice: payload.exitPrice,
+        income: payload.income,
+        commission: payload.commission,
+        funding: payload.funding,
+        entryNotionalUsdt: payload.entryNotionalUsdt,
+        rr: null,
+        noteSystem: payload.noteSystem,
+        noteTechnique: payload.noteTechnique,
+        noteAnalysis: payload.noteAnalysis,
+        noteSystemTs: payload.noteSystemTs,
+        noteTechniqueTs: payload.noteTechniqueTs,
+        noteAnalysisTs: payload.noteAnalysisTs,
+        mergeGroupId: null,
+        mergedFrom: payload.mergedFrom,
+        createdAt: payload.createdAt,
+        updatedAt: payload.updatedAt,
+      })
+      .returning()
+    if (!inserted) throw createError({ statusCode: 500 })
+    newId = inserted.id
+    await replaceTradeLabels(tx as AppDatabase, inserted.id, labelPacks)
+    await tx.delete(trades).where(inArray(trades.id, ids))
+  })
 
-  return { ok: true, tradeId: inserted.id }
+  return { ok: true, tradeId: newId }
 })

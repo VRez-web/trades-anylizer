@@ -1,12 +1,11 @@
 import { sql, and, eq, inArray, like, asc, gte, lte } from 'drizzle-orm'
-import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3'
 import { format, getISOWeekYear, getISOWeek } from 'date-fns'
 import { trades, reasons, periodNotes, labelDefs, tradeLabelLinks } from '../database/schema'
 import type { LabelKind } from '../database/schema'
 import { netProfit, type TradeRow } from './tradeMath'
-import type * as schema from '../database/schema'
+import type { AppDatabase } from '../types/app-database'
 
-type Db = BetterSQLite3Database<typeof schema>
+type Db = AppDatabase
 
 function netForTrade(row: TradeRow) {
   return netProfit(row)

@@ -32,9 +32,13 @@ function tsBlockFilled(t: TradeRow) {
   return s === '' && tech === '' && psy.length > 0
 }
 
-/** Заполнен блок «общий» (система / техника / психология). */
+/** Заполнен блок «общий»: любой из трёх столбцов (в т.ч. единый текст в note_system) или старый полный триплет. */
 export function isGeneralAnalysisComplete(t: TradeRow) {
-  return tripletFilled(t.noteSystem, t.noteTechnique, t.noteAnalysis)
+  return (
+    (t.noteSystem ?? '').trim().length > 0 ||
+    (t.noteTechnique ?? '').trim().length > 0 ||
+    (t.noteAnalysis ?? '').trim().length > 0
+  )
 }
 
 /** Заполнен блок «ТС». */

@@ -1,10 +1,9 @@
 import { and, eq, inArray } from 'drizzle-orm'
-import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3'
 import { labelDefs, tradeLabelLinks } from '../database/schema'
 import type { LabelKind } from '../database/schema'
-import type * as schema from '../database/schema'
+import type { AppDatabase } from '../types/app-database'
 
-type Db = BetterSQLite3Database<typeof schema>
+type Db = AppDatabase
 
 const KINDS: LabelKind[] = ['system', 'technique', 'psychology']
 

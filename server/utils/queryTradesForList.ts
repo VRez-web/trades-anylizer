@@ -1,21 +1,54 @@
-import { and, asc, desc, eq, gte, inArray, lte, sql } from 'drizzle-orm'
+import { and, asc, desc, eq, gte, inArray, lte, not, or, sql } from 'drizzle-orm'
 import type { SQL } from 'drizzle-orm'
-import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3'
 import { trades, tradeLabelLinks } from '../database/schema'
-import type * as schema from '../database/schema'
+import type { AppDatabase } from '../types/app-database'
 import { localDayBounds } from './stats'
 import type { TradeRow } from './tradeMath'
 
-type Db = BetterSQLite3Database<typeof schema>
+type Db = AppDatabase
+
+/** Соответствует `isAnalysisComplete` / `isGeneralAnalysisComplete` + `isTsAnalysisComplete` в tradeMath. */
+function sqlHasAnyAnalysis(): SQL {
+  const general = or(
+    sql`length(trim(coalesce(${trades.noteSystem}, ''))) > 0`,
+    sql`length(trim(coalesce(${trades.noteTechnique}, ''))) > 0`,
+    sql`length(trim(coalesce(${trades.noteAnalysis}, ''))) > 0`,
+  )!
+  const tsTriplet = and(
+    sql`length(trim(coalesce(${trades.noteSystemTs}, ''))) > 0`,
+    sql`length(trim(coalesce(${trades.noteTechniqueTs}, ''))) > 0`,
+    sql`length(trim(coalesce(${trades.noteAnalysisTs}, ''))) > 0`,
+  )!
+  const tsOnly = and(
+    sql`length(trim(coalesce(${trades.noteSystemTs}, ''))) = 0`,
+    sql`length(trim(coalesce(${trades.noteTechniqueTs}, ''))) = 0`,
+    sql`length(trim(coalesce(${trades.noteAnalysisTs}, ''))) > 0`,
+  )!
+  const tsBlock = or(tsTriplet, tsOnly)!
+  return or(general, tsBlock)!
+}
+
+function appendAnalysisFilter(conditions: SQL[], q: Record<string, unknown>) {
+  const af = q.analysis
+  if (af !== 'with' && af !== 'without') return
+  const expr = sqlHasAnyAnalysis()
+  if (af === 'with') {
+    conditions.push(expr)
+  } else {
+    conditions.push(not(expr))
+  }
+}
 
 /** Общая выборка для `/api/trades` и `/api/trades/infographic` (без `day` — только список с фильтрами). */
 export async function queryTradesForList(db: Db, q: Record<string, unknown>): Promise<TradeRow[]> {
   if (q.day && typeof q.day === 'string') {
     const { from, to } = localDayBounds(q.day)
+    const dayCond: SQL[] = [gte(trades.exitAt, from), lte(trades.exitAt, to)]
+    appendAnalysisFilter(dayCond, q)
     return db
       .select()
       .from(trades)
-      .where(and(gte(trades.exitAt, from), lte(trades.exitAt, to)))
+      .where(and(...dayCond))
       .orderBy(asc(trades.entryAt), asc(trades.id))
   }
 
@@ -48,6 +81,8 @@ export async function queryTradesForList(db: Db, q: Record<string, unknown>): Pr
     if (tids.length === 0) return []
     conditions.push(inArray(trades.id, tids))
   }
+
+  appendAnalysisFilter(conditions, q)
 
   const sortDesc = q.sort === 'exit_desc'
   const order = sortDesc ? desc(trades.exitAt) : asc(trades.exitAt)

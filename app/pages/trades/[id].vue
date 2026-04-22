@@ -5,8 +5,9 @@ import { estimateQuoteVolumeUsdt } from '#shared/tradeQuoteVolume'
 const route = useRoute()
 const id = computed(() => Number(route.params.id))
 
-const { data, refresh } = await useFetch(() => `/api/trades/${id.value}`, {
+const { data, refresh, pending, error } = await useFetch(() => `/api/trades/${id.value}`, {
   watch: [id],
+  server: false,
 })
 
 const { fmtUsdt, fmtInstrumentPrice, fmtPriceMovePct } = useMoney()
@@ -47,6 +48,17 @@ const mergeLegsForChart = computed(() => {
   }))
 })
 
+function mergeGeneralFromTrade(t: {
+  noteSystem?: string | null
+  noteTechnique?: string | null
+  noteAnalysis?: string | null
+}): string {
+  return [t.noteSystem, t.noteTechnique, t.noteAnalysis]
+    .map((x) => (x ?? '').trim())
+    .filter((x) => x.length > 0)
+    .join('\n\n')
+}
+
 const form = reactive({
   symbol: '',
   side: 'long' as 'long' | 'short',
@@ -59,10 +71,11 @@ const form = reactive({
   commission: 0,
   funding: 0,
   rr: '' as string | number,
-  noteSystem: '',
-  noteTechnique: '',
-  noteAnalysis: '',
-  noteTsText: '',
+  /** Один общий анализ → в API кладётся в note_system, остальные general-поля очищаются. */
+  noteGeneral: '',
+  noteSystemTs: '',
+  noteTechniqueTs: '',
+  noteAnalysisTs: '',
   labelIds: {
     system: [] as number[],
     technique: [] as number[],
@@ -91,6 +104,14 @@ watch(id, () => {
   }
 })
 
+/** true: три блока общего анализа; false: три блока анализа по ТС (режим по умолчанию). */
+const showGeneralAnalysis = ref(false)
+
+const hasGenNotes = computed(() => form.noteGeneral.trim().length > 0)
+const hasTsNotes = computed(() =>
+  [form.noteSystemTs, form.noteTechniqueTs, form.noteAnalysisTs].some((s) => (s ?? '').trim().length > 0),
+)
+
 watch(
   data,
   (d) => {
@@ -110,13 +131,21 @@ watch(
     form.commission = t.commission
     form.funding = t.funding
     form.rr = t.rr ?? ''
-    form.noteSystem = t.noteSystem ?? ''
-    form.noteTechnique = t.noteTechnique ?? ''
-    form.noteAnalysis = t.noteAnalysis ?? ''
-    const tsParts = [t.noteSystemTs, t.noteTechniqueTs, t.noteAnalysisTs]
-      .map((x) => (x ?? '').trim())
-      .filter((x) => x.length > 0)
-    form.noteTsText = tsParts.join('\n\n')
+    form.noteGeneral = mergeGeneralFromTrade(t)
+    form.noteSystemTs = t.noteSystemTs ?? ''
+    form.noteTechniqueTs = t.noteTechniqueTs ?? ''
+    form.noteAnalysisTs = t.noteAnalysisTs ?? ''
+    {
+      const hasGen = mergeGeneralFromTrade(t).trim().length > 0
+      const hasTs = [t.noteSystemTs, t.noteTechniqueTs, t.noteAnalysisTs].some(
+        (x) => (x ?? '').trim().length > 0,
+      )
+      if (hasGen && !hasTs) {
+        showGeneralAnalysis.value = true
+      } else if (!hasGen) {
+        showGeneralAnalysis.value = false
+      }
+    }
     const lb = d.labels as
       | { system: { id: number }[]; technique: { id: number }[]; psychology: { id: number }[] }
       | undefined
@@ -183,7 +212,6 @@ function fmtWhen(iso: string) {
   })
 }
 
-const showTsAnalysisFields = ref(false)
 const unmerging = ref(false)
 
 async function unmergeGroup() {
@@ -233,12 +261,12 @@ async function save() {
         method: 'PATCH',
         body: {
           rr: form.rr === '' ? null : Number(form.rr),
-          noteSystem: form.noteSystem,
-          noteTechnique: form.noteTechnique,
-          noteAnalysis: form.noteAnalysis,
-          noteSystemTs: null,
-          noteTechniqueTs: null,
-          noteAnalysisTs: form.noteTsText.trim() || null,
+          noteSystem: form.noteGeneral.trim() || null,
+          noteTechnique: null,
+          noteAnalysis: null,
+          noteSystemTs: form.noteSystemTs,
+          noteTechniqueTs: form.noteTechniqueTs,
+          noteAnalysisTs: form.noteAnalysisTs,
           labelIds,
         },
       })
@@ -257,12 +285,12 @@ async function save() {
           commission: form.commission,
           funding: form.funding,
           rr: form.rr === '' ? null : Number(form.rr),
-          noteSystem: form.noteSystem,
-          noteTechnique: form.noteTechnique,
-          noteAnalysis: form.noteAnalysis,
-          noteSystemTs: null,
-          noteTechniqueTs: null,
-          noteAnalysisTs: form.noteTsText.trim() || null,
+          noteSystem: form.noteGeneral.trim() || null,
+          noteTechnique: null,
+          noteAnalysis: null,
+          noteSystemTs: form.noteSystemTs,
+          noteTechniqueTs: form.noteTechniqueTs,
+          noteAnalysisTs: form.noteAnalysisTs,
           labelIds,
         },
       })
@@ -456,14 +484,27 @@ async function save() {
           </div>
 
           <label class="ts-toggle row">
-            <input v-model="showTsAnalysisFields" type="checkbox" />
-            <span>Редактировать блок анализа «ТС» (отдельно от общего)</span>
+            <input v-model="showGeneralAnalysis" type="checkbox" />
+            <span>Редактировать общий анализ (отдельно от анализа по ТС)</span>
           </label>
+          <p
+            v-if="hasGenNotes && hasTsNotes && !showGeneralAnalysis"
+            class="ts-both-hint muted"
+          >
+            Для этой сделки заполнены и анализ по ТС, и общий. Сейчас открыт анализ по ТС; включите галочку выше, чтобы
+            увидеть общий анализ.
+          </p>
+          <p
+            v-if="hasGenNotes && hasTsNotes && showGeneralAnalysis"
+            class="ts-both-hint muted"
+          >
+            Сейчас открыт общий анализ. Снимите галочку, чтобы вернуться к трём блокам анализа по ТС.
+          </p>
 
-          <div v-show="!showTsAnalysisFields" class="notes-grid">
+          <div v-show="!showGeneralAnalysis" class="notes-grid">
             <div class="note-cell">
               <div class="label note-label">
-                <LabelWithHint :lines="tradeNoteHints.system">Система</LabelWithHint>
+                <LabelWithHint :lines="tradeNoteHints.system">Система <span class="muted">(ТС)</span></LabelWithHint>
               </div>
               <LabelMultiCombobox
                 v-model="form.labelIds.system"
@@ -473,11 +514,12 @@ async function save() {
                 class="label-row"
                 @refresh="refreshAllLabels"
               />
-              <textarea v-model="form.noteSystem" class="textarea textarea-dense" rows="7" placeholder="…" />
+              <textarea v-model="form.noteSystemTs" class="textarea textarea-dense" rows="7" placeholder="…" />
             </div>
             <div class="note-cell">
               <div class="label note-label">
-                <LabelWithHint :lines="tradeNoteHints.technique">Техника</LabelWithHint>
+                <LabelWithHint :lines="tradeNoteHints.technique"
+                  >Техника <span class="muted">(ТС)</span></LabelWithHint>
               </div>
               <LabelMultiCombobox
                 v-model="form.labelIds.technique"
@@ -487,11 +529,12 @@ async function save() {
                 class="label-row"
                 @refresh="refreshAllLabels"
               />
-              <textarea v-model="form.noteTechnique" class="textarea textarea-dense" rows="7" placeholder="…" />
+              <textarea v-model="form.noteTechniqueTs" class="textarea textarea-dense" rows="7" placeholder="…" />
             </div>
             <div class="note-cell">
               <div class="label note-label">
-                <LabelWithHint :lines="tradeNoteHints.psychology">Психология</LabelWithHint>
+                <LabelWithHint :lines="tradeNoteHints.psychology"
+                  >Психология <span class="muted">(ТС)</span></LabelWithHint>
               </div>
               <LabelMultiCombobox
                 v-model="form.labelIds.psychology"
@@ -501,13 +544,59 @@ async function save() {
                 class="label-row"
                 @refresh="refreshAllLabels"
               />
-              <textarea v-model="form.noteAnalysis" class="textarea textarea-dense" rows="7" placeholder="…" />
+              <textarea v-model="form.noteAnalysisTs" class="textarea textarea-dense" rows="7" placeholder="…" />
             </div>
           </div>
 
-          <div v-show="showTsAnalysisFields" class="note-cell ts-single">
-            <div class="label note-label">Анализ «ТС»</div>
-            <textarea v-model="form.noteTsText" class="textarea textarea-dense" rows="14" placeholder="…" />
+          <div v-show="showGeneralAnalysis" class="general-one-block">
+            <div class="general-tags-row">
+              <div class="tag-col">
+                <div class="label note-label">
+                  <LabelWithHint :lines="tradeNoteHints.system">Метка: система</LabelWithHint>
+                </div>
+                <LabelMultiCombobox
+                  v-model="form.labelIds.system"
+                  kind="system"
+                  :options="optionsSystem"
+                  input-class="input input-tight"
+                  class="label-row"
+                  @refresh="refreshAllLabels"
+                />
+              </div>
+              <div class="tag-col">
+                <div class="label note-label">
+                  <LabelWithHint :lines="tradeNoteHints.technique">Метка: техника</LabelWithHint>
+                </div>
+                <LabelMultiCombobox
+                  v-model="form.labelIds.technique"
+                  kind="technique"
+                  :options="optionsTechnique"
+                  input-class="input input-tight"
+                  class="label-row"
+                  @refresh="refreshAllLabels"
+                />
+              </div>
+              <div class="tag-col">
+                <div class="label note-label">
+                  <LabelWithHint :lines="tradeNoteHints.psychology">Метка: психология</LabelWithHint>
+                </div>
+                <LabelMultiCombobox
+                  v-model="form.labelIds.psychology"
+                  kind="psychology"
+                  :options="optionsPsychology"
+                  input-class="input input-tight"
+                  class="label-row"
+                  @refresh="refreshAllLabels"
+                />
+              </div>
+            </div>
+            <div class="label note-label" style="margin-top: 0.65rem">Общий анализ</div>
+            <textarea
+              v-model="form.noteGeneral"
+              class="textarea textarea-dense"
+              rows="14"
+              placeholder="…"
+            />
           </div>
 
           <button type="button" class="btn btn-primary btn-save" :disabled="saving" @click="save">
@@ -517,7 +606,9 @@ async function save() {
       </div>
     </div>
   </div>
-  <div v-else class="page muted">Загрузка…</div>
+  <div v-else-if="pending" class="page muted">Загрузка…</div>
+  <div v-else-if="error" class="page muted">Не удалось загрузить сделку</div>
+  <div v-else class="page muted">Нет сделки</div>
 </template>
 
 <style scoped>
@@ -689,8 +780,26 @@ async function save() {
 .ts-toggle input {
   margin-top: 0.2rem;
 }
-.ts-single {
-  margin-top: 0.65rem;
+.ts-both-hint {
+  font-size: 0.8rem;
+  line-height: 1.4;
+  margin: 0.2rem 0 0.55rem;
+}
+.general-one-block {
+  margin-top: 0.25rem;
+}
+.general-tags-row {
+  display: grid;
+  gap: 0.5rem 0.75rem;
+  grid-template-columns: 1fr;
+}
+@media (min-width: 700px) {
+  .general-tags-row {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+.tag-col {
+  min-width: 0;
 }
 .merge-strip {
   display: flex;
