@@ -45,7 +45,7 @@ export async function calendarMonth(db: Db, year: number, monthIndex0: number) {
     const k = exitDateKeyLocal(t.exitAt)
     byDay.set(k, (byDay.get(k) ?? 0) + netForTrade(t))
   }
-  return { byDay, from, to }
+  return { byDay, from, to, tradesCount: rows.length }
 }
 
 export async function calendarMonthJournalFlags(db: Db, year: number, monthIndex1: number) {
@@ -66,6 +66,44 @@ export async function calendarMonthJournalFlags(db: Db, year: number, monthIndex
     }
   }
   return journalByDay
+}
+
+export async function calendarMonthPeriodFlags(db: Db, year: number, monthIndex0: number) {
+  const monthKey = `${year}-${String(monthIndex0 + 1).padStart(2, '0')}`
+  const { from, to } = localMonthBounds(year, monthIndex0)
+  const weekKeys = new Set<string>()
+  const cursor = new Date(from)
+  while (cursor <= to) {
+    weekKeys.add(periodKeyWeek(cursor))
+    cursor.setDate(cursor.getDate() + 1)
+  }
+  const weekKeysList = Array.from(weekKeys)
+  const [monthRows, weekRows] = await Promise.all([
+    db
+      .select({
+        content: periodNotes.content,
+      })
+      .from(periodNotes)
+      .where(and(eq(periodNotes.scope, 'month'), eq(periodNotes.periodKey, monthKey)))
+      .limit(1),
+    db
+      .select({
+        periodKey: periodNotes.periodKey,
+        content: periodNotes.content,
+      })
+      .from(periodNotes)
+      .where(and(eq(periodNotes.scope, 'week'), inArray(periodNotes.periodKey, weekKeysList))),
+  ])
+  const monthRow = monthRows[0]
+  const monthAnalysis = Boolean(monthRow?.content?.trim().length)
+  const weekAnalysisByKey: Record<string, boolean> = {}
+  for (const key of weekKeysList) weekAnalysisByKey[key] = false
+  for (const r of weekRows) {
+    if (r.periodKey in weekAnalysisByKey) {
+      weekAnalysisByKey[r.periodKey] = r.content.trim().length > 0
+    }
+  }
+  return { monthAnalysis, weekAnalysisByKey }
 }
 
 export async function equitySeries(db: Db) {

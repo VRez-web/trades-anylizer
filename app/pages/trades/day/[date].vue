@@ -76,6 +76,20 @@ function fmtTradeTime(iso: string) {
 
 const selectedForMerge = ref<number[]>([])
 
+const selectedMergeMeta = computed(() => {
+  const list = trades.value ?? []
+  const selectedRows = list.filter((t: { id: number }) => selectedForMerge.value.includes(t.id))
+  if (!selectedRows.length) return null
+  const first = selectedRows[0] as { symbol: string; side: 'long' | 'short' }
+  return { symbol: first.symbol, side: first.side }
+})
+
+function isMergeCandidateCompatible(t: { symbol: string; side: 'long' | 'short' }) {
+  const base = selectedMergeMeta.value
+  if (!base) return true
+  return t.symbol === base.symbol && t.side === base.side
+}
+
 function toggleMergeSelect(id: number, mergeGroupId: number | null | undefined) {
   if (mergeGroupId != null) return
   const i = selectedForMerge.value.indexOf(id)
@@ -180,6 +194,10 @@ async function unmergeGroup(mergeGroupId: number) {
         Объединить выбранные ({{ selectedForMerge.length }})
       </button>
     </div>
+    <p v-if="selectedMergeMeta" class="muted merge-hint">
+      Для объединения доступны только сделки: <strong>{{ selectedMergeMeta.symbol }}</strong> ·
+      <strong>{{ selectedMergeMeta.side }}</strong>.
+    </p>
     <div v-if="!trades?.length" class="muted">Пусто</div>
     <table v-else class="tbl">
       <thead>
@@ -213,6 +231,7 @@ async function unmergeGroup(mergeGroupId: number) {
               type="checkbox"
               :checked="isSelectedForMerge(t.id)"
               :aria-label="`Выбрать сделку ${t.id}`"
+              :disabled="!isSelectedForMerge(t.id) && !isMergeCandidateCompatible(t)"
               @change="toggleMergeSelect(t.id, t.mergeGroupId)"
             />
           </td>
@@ -402,5 +421,9 @@ async function unmergeGroup(mergeGroupId: number) {
 }
 .merged-badge {
   font-size: 0.75rem;
+}
+.merge-hint {
+  margin: 0 0 0.6rem;
+  font-size: 0.8rem;
 }
 </style>

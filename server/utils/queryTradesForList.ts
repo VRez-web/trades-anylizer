@@ -39,12 +39,20 @@ function appendAnalysisFilter(conditions: SQL[], q: Record<string, unknown>) {
   }
 }
 
+function appendRrFilter(conditions: SQL[], q: Record<string, unknown>) {
+  const rrMin = Number(q.rrMin)
+  const rrMax = Number(q.rrMax)
+  if (Number.isFinite(rrMin)) conditions.push(gte(trades.rr, rrMin))
+  if (Number.isFinite(rrMax)) conditions.push(lte(trades.rr, rrMax))
+}
+
 /** Общая выборка для `/api/trades` и `/api/trades/infographic` (без `day` — только список с фильтрами). */
 export async function queryTradesForList(db: Db, q: Record<string, unknown>): Promise<TradeRow[]> {
   if (q.day && typeof q.day === 'string') {
     const { from, to } = localDayBounds(q.day)
     const dayCond: SQL[] = [gte(trades.exitAt, from), lte(trades.exitAt, to)]
     appendAnalysisFilter(dayCond, q)
+    appendRrFilter(dayCond, q)
     return db
       .select()
       .from(trades)
@@ -83,6 +91,7 @@ export async function queryTradesForList(db: Db, q: Record<string, unknown>): Pr
   }
 
   appendAnalysisFilter(conditions, q)
+  appendRrFilter(conditions, q)
 
   const sortDesc = q.sort === 'exit_desc'
   const order = sortDesc ? desc(trades.exitAt) : asc(trades.exitAt)

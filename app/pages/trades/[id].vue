@@ -11,6 +11,33 @@ const { data, refresh, pending, error } = await useFetch(() => `/api/trades/${id
 })
 
 const { fmtUsdt, fmtInstrumentPrice, fmtPriceMovePct } = useMoney()
+const dayPlanOpen = ref(false)
+const dayPlanLoading = ref(false)
+const dayPlanText = ref('')
+const dayPlanError = ref('')
+
+const tradeDayKey = computed(() => {
+  const iso = data.value?.trade?.exitAt
+  return iso ? localDayKeyFromIso(iso) : ''
+})
+
+async function openDayPlanModal() {
+  if (!tradeDayKey.value) return
+  dayPlanOpen.value = true
+  dayPlanLoading.value = true
+  dayPlanError.value = ''
+  try {
+    const n = await $fetch<{ tradePlan?: string }>('/api/notes', {
+      query: { scope: 'day', key: tradeDayKey.value },
+    })
+    dayPlanText.value = (n.tradePlan ?? '').trim()
+  } catch {
+    dayPlanText.value = ''
+    dayPlanError.value = 'Не удалось загрузить план дня'
+  } finally {
+    dayPlanLoading.value = false
+  }
+}
 
 const quoteVolPreview = computed(() => {
   const t = data.value?.trade
@@ -306,6 +333,7 @@ async function save() {
   <div v-if="data?.trade" class="page page-trade">
     <div class="trade-head row">
       <NuxtLink :to="`/trades/day/${localDayKeyFromIso(data.trade.exitAt)}`" class="btn">← День</NuxtLink>
+      <button type="button" class="btn" @click="openDayPlanModal">План дня</button>
       <h1 class="trade-title">{{ data.trade.symbol }}</h1>
     </div>
 
@@ -609,6 +637,27 @@ async function save() {
   <div v-else-if="pending" class="page muted">Загрузка…</div>
   <div v-else-if="error" class="page muted">Не удалось загрузить сделку</div>
   <div v-else class="page muted">Нет сделки</div>
+
+  <div v-if="dayPlanOpen" class="modal-backdrop" role="dialog" aria-modal="true" @click.self="dayPlanOpen = false">
+    <div class="modal-card">
+      <div class="modal-head">
+        <h2 class="modal-title">Торговый план на {{ tradeDayKey }}</h2>
+        <button type="button" class="btn btn-tiny" @click="dayPlanOpen = false">Закрыть</button>
+      </div>
+      <p v-if="dayPlanLoading" class="muted">Загрузка…</p>
+      <p v-else-if="dayPlanError" class="neg">{{ dayPlanError }}</p>
+      <textarea
+        v-else
+        class="textarea modal-plan-text"
+        :value="dayPlanText || 'План на этот день не заполнен.'"
+        rows="16"
+        readonly
+      />
+      <div class="modal-actions">
+        <NuxtLink v-if="tradeDayKey" :to="`/journal/day?date=${tradeDayKey}`" class="btn btn-primary">Открыть день в журнале</NuxtLink>
+      </div>
+    </div>
+  </div>
 </template>
 
 <style scoped>
@@ -820,5 +869,44 @@ async function save() {
 .merged-from-strip .merged-ids {
   font-weight: 600;
   font-variant-numeric: tabular-nums;
+}
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  display: grid;
+  place-items: center;
+  z-index: 50;
+  padding: 1rem;
+}
+.modal-card {
+  width: min(820px, 100%);
+  max-height: min(88vh, 900px);
+  overflow: auto;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 0.9rem;
+}
+.modal-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.6rem;
+}
+.modal-title {
+  margin: 0;
+  font-size: 1rem;
+}
+.modal-plan-text {
+  width: 100%;
+  font-size: 0.9rem;
+  line-height: 1.45;
+}
+.modal-actions {
+  margin-top: 0.6rem;
+  display: flex;
+  justify-content: flex-end;
 }
 </style>

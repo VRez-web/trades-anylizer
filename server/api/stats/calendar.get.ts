@@ -1,5 +1,5 @@
 import { useDb } from '../../utils/db'
-import { calendarMonth, calendarMonthJournalFlags } from '../../utils/stats'
+import { calendarMonth, calendarMonthJournalFlags, calendarMonthPeriodFlags } from '../../utils/stats'
 
 export default defineEventHandler(async (event) => {
   const q = getQuery(event)
@@ -9,14 +9,18 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 400, statusMessage: 'year, month (1-12) required' })
   }
   const db = useDb()
-  const [{ byDay }, journalByDay] = await Promise.all([
+  const [{ byDay, tradesCount }, journalByDay, periodFlags] = await Promise.all([
     calendarMonth(db, y, m - 1),
     calendarMonthJournalFlags(db, y, m),
+    calendarMonthPeriodFlags(db, y, m - 1),
   ])
   return {
     year: y,
     month: m,
     days: Object.fromEntries(byDay.entries()),
+    monthTradesCount: tradesCount,
     journalByDay,
+    journalMonthAnalysis: periodFlags.monthAnalysis,
+    journalWeekAnalysisByKey: periodFlags.weekAnalysisByKey,
   }
 })

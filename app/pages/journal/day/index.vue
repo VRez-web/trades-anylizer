@@ -150,6 +150,7 @@ async function saveNote() {
                 Сделка {{ i + 1 }}:
                 {{ fmtInstrumentPrice(t.entryPrice) }} → {{ fmtInstrumentPrice(t.exitPrice) }} · чистый
                 <span :class="t.net >= 0 ? 'pos' : 'neg'">{{ fmtSignedUsdt(t.net, 2) }}</span>
+                <NuxtLink :to="`/trades/${t.id}`" class="trade-link">Открыть сделку</NuxtLink>
               </li>
             </ul>
           </template>
@@ -163,10 +164,6 @@ async function saveNote() {
       <aside class="journal-day__aside">
         <div class="card journal-day__block">
           <h2 class="journal-day__h">Торговый план</h2>
-          <p class="muted journal-day__hint">
-            План на день; в календаре сделок статус «есть / нет» берётся из этого поля. Для пустого дня в
-            поле сразу подставляется структура: A/B, метод входа, запасной сценарий, условия отмены плана.
-          </p>
           <textarea
             v-model="tradePlan"
             class="textarea textarea-plan"
@@ -286,6 +283,10 @@ async function saveNote() {
 }
 .journal-day__trade-sum li {
   margin: 0.2rem 0;
+}
+.trade-link {
+  margin-left: 0.55rem;
+  font-weight: 600;
 }
 .journal-day__trade-sum li:first-child {
   margin-top: 0;

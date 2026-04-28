@@ -11,6 +11,7 @@ export default defineEventHandler((event) => {
   if (path === '/api/auth/login' && method === 'POST') return
   if (path === '/api/auth/me' && method === 'GET') return
   if (path === '/api/auth/logout' && method === 'POST') return
+  if (path === '/api/health' && method === 'GET') return
 
   if (!path.startsWith('/api/')) return
 

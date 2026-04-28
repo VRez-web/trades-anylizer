@@ -8,6 +8,7 @@ type TradeRow = {
   entryAt: string
   exitAt: string
   net: number
+  rr: number | null
   analysisDone: boolean
   labels?: LabelItem[]
 }
@@ -18,6 +19,8 @@ const result = ref<'all' | 'win' | 'loss'>('all')
 const analysis = ref<'all' | 'with' | 'without'>('all')
 const fromDate = ref('')
 const toDate = ref('')
+const rrMin = ref('')
+const rrMax = ref('')
 const labelId = ref('')
 const sort = ref<'exit_desc' | 'exit_asc'>('exit_desc')
 
@@ -40,6 +43,10 @@ const query = computed(() => {
   if (analysis.value === 'with' || analysis.value === 'without') q.analysis = analysis.value
   if (fromDate.value) q.from = new Date(fromDate.value + 'T00:00:00').toISOString()
   if (toDate.value) q.to = new Date(toDate.value + 'T23:59:59.999').toISOString()
+  const min = Number(rrMin.value)
+  if (rrMin.value !== '' && Number.isFinite(min)) q.rrMin = String(min)
+  const max = Number(rrMax.value)
+  if (rrMax.value !== '' && Number.isFinite(max)) q.rrMax = String(max)
   const lid = Number(labelId.value)
   if (labelId.value !== '' && Number.isFinite(lid) && lid > 0) q.labelId = String(lid)
   return q
@@ -63,7 +70,16 @@ const {
   data: infoPack,
   pending: infoPending,
   refresh: refreshInfo,
-} = await useFetch<{ trades: TradeRow[] }>(infographicUrl, { immediate: false })
+} = await useFetch<{
+  trades: TradeRow[]
+  dayJournal?: {
+    totalDays: number
+    daysWithAnalysis: number
+    daysWithTradePlan: number
+    daysWithBoth: number
+    daysWithoutAny: number
+  }
+}>(infographicUrl, { immediate: false })
 
 async function toggleInfographic() {
   if (!infoOpen.value) {
@@ -94,6 +110,25 @@ const infoSummary = computed(() => {
   const rows = infoTrades.value
   const sum = rows.reduce((s, t) => s + t.net, 0)
   return { count: rows.length, sum }
+})
+
+const avgRr = computed(() => {
+  const rows = infoTrades.value.filter((t) => Number.isFinite(t.rr))
+  if (!rows.length) return null
+  const sum = rows.reduce((s, t) => s + (t.rr ?? 0), 0)
+  return { value: sum / rows.length, count: rows.length }
+})
+
+const dayJournalInfo = computed(() => {
+  return (
+    infoPack.value?.dayJournal ?? {
+      totalDays: 0,
+      daysWithAnalysis: 0,
+      daysWithTradePlan: 0,
+      daysWithBoth: 0,
+      daysWithoutAny: 0,
+    }
+  )
 })
 
 const bySymbol = computed(() => {
@@ -176,6 +211,11 @@ function fmtWinRatePct(p: number | null) {
   return `${(p * 100).toLocaleString('ru-RU', { maximumFractionDigits: 1 })}%`
 }
 
+function fmtRr(v: number | null) {
+  if (v == null || Number.isNaN(v)) return '—'
+  return v.toLocaleString('ru-RU', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+}
+
 </script>
 
 <template>
@@ -219,6 +259,14 @@ function fmtWinRatePct(p: number | null) {
           <span class="fl-l">По дату</span>
           <input v-model="toDate" class="input" type="date" />
         </label>
+        <label class="fl">
+          <span class="fl-l">RR от</span>
+          <input v-model="rrMin" class="input" type="number" step="0.1" />
+        </label>
+        <label class="fl">
+          <span class="fl-l">RR до</span>
+          <input v-model="rrMax" class="input" type="number" step="0.1" />
+        </label>
         <label class="fl fl-label-span">
           <span class="fl-l">Лейбл</span>
           <select v-model="labelId" class="input">
@@ -260,8 +308,38 @@ function fmtWinRatePct(p: number | null) {
         <p class="info-lead">
           По выбранным фильтрам: <strong>{{ infoSummary.count }}</strong> сделок, чистый
           <strong :class="infoSummary.sum >= 0 ? 'pos' : 'neg'">{{ fmtUsdt(infoSummary.sum) }}</strong>
+          , средний RR:
+          <strong>{{ fmtRr(avgRr?.value ?? null) }}</strong>
+          <span class="muted"> (по {{ avgRr?.count ?? 0 }} сделк{{ (avgRr?.count ?? 0) === 1 ? 'е' : 'ам' }})</span>
           <span class="muted">(группировки ниже по этому же набору)</span>
         </p>
+
+        <h3 class="info-h">Журнал по дням</h3>
+        <p class="muted info-note">
+          По дням, в которые есть сделки после фильтрации: анализ и торговый план из дневного журнала.
+        </p>
+        <div class="info-grid">
+          <div class="info-tile">
+            <div class="info-tile__sym">Дней со сделками</div>
+            <div class="info-tile__meta"><strong>{{ dayJournalInfo.totalDays }}</strong></div>
+          </div>
+          <div class="info-tile">
+            <div class="info-tile__sym">С анализом</div>
+            <div class="info-tile__meta"><strong>{{ dayJournalInfo.daysWithAnalysis }}</strong></div>
+          </div>
+          <div class="info-tile">
+            <div class="info-tile__sym">С торговым планом</div>
+            <div class="info-tile__meta"><strong>{{ dayJournalInfo.daysWithTradePlan }}</strong></div>
+          </div>
+          <div class="info-tile">
+            <div class="info-tile__sym">И анализ, и план</div>
+            <div class="info-tile__meta"><strong>{{ dayJournalInfo.daysWithBoth }}</strong></div>
+          </div>
+          <div class="info-tile">
+            <div class="info-tile__sym">Без заполнения</div>
+            <div class="info-tile__meta"><strong>{{ dayJournalInfo.daysWithoutAny }}</strong></div>
+          </div>
+        </div>
 
         <div v-if="result === 'all' && winRateBySide" class="info-winrate">
           <h3 class="info-h">Винрейт</h3>
@@ -352,6 +430,7 @@ function fmtWinRatePct(p: number | null) {
             <th class="col-sym">Тикер</th>
             <th class="col-side">Сторона</th>
             <th class="col-net">Чистый</th>
+            <th class="col-rr">RR</th>
             <th class="col-an">Анализ</th>
           </tr>
         </thead>
@@ -369,6 +448,7 @@ function fmtWinRatePct(p: number | null) {
             <td class="sym">{{ t.symbol }}</td>
             <td>{{ t.side }}</td>
             <td :class="t.net >= 0 ? 'pos' : 'neg'">{{ fmtUsdt(t.net) }}</td>
+            <td>{{ t.rr == null ? '—' : t.rr.toFixed(2) }}</td>
             <td>
               <span class="an" :class="t.analysisDone ? 'yes' : 'no'">{{
                 t.analysisDone ? 'да' : 'нет'
@@ -497,6 +577,9 @@ function fmtWinRatePct(p: number | null) {
 }
 .col-an {
   width: 12%;
+}
+.col-rr {
+  width: 10%;
 }
 .tbl tbody tr.tbl-row {
   cursor: pointer;

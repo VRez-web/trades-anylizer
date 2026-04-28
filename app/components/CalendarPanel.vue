@@ -4,6 +4,8 @@ import {
   endOfMonth,
   endOfWeek,
   format,
+  getISOWeek,
+  getISOWeekYear,
   isSameMonth,
   startOfMonth,
   startOfWeek,
@@ -13,8 +15,13 @@ const props = defineProps<{
   year: number
   month: number
   days: Record<string, number>
+  monthTradesCount?: number
   /** По дате yyyy-MM-dd: есть ли текст анализа дня и торгового плана (из журнала) */
   journalByDay?: Record<string, { analysis: boolean; plan: boolean }>
+  /** Флаг анализа выбранного месяца (`period_notes.scope='month'`). */
+  journalMonthAnalysis?: boolean
+  /** По ISO-ключу недели yyyy-Www: есть ли анализ недели (`period_notes.scope='week'`). */
+  journalWeekAnalysisByKey?: Record<string, boolean>
 }>()
 
 const emit = defineEmits<{
@@ -28,6 +35,24 @@ const { fmtSignedUsdt } = useMoney()
 const anchor = computed(() => new Date(props.year, props.month - 1, 1))
 
 const label = computed(() => format(anchor.value, 'LLLL yyyy', { locale: undefined }))
+
+function tradeWord(count: number) {
+  const n = Math.abs(Math.trunc(count)) % 100
+  const n1 = n % 10
+  if (n > 10 && n < 20) return 'сделок'
+  if (n1 > 1 && n1 < 5) return 'сделки'
+  if (n1 === 1) return 'сделка'
+  return 'сделок'
+}
+
+const monthTradesLabel = computed(() => {
+  const count = Number.isFinite(props.monthTradesCount) ? Math.max(0, Math.trunc(props.monthTradesCount ?? 0)) : 0
+  return `${count} ${tradeWord(count)}`
+})
+
+function weekKeyFromDate(d: Date) {
+  return `${getISOWeekYear(d)}-W${String(getISOWeek(d)).padStart(2, '0')}`
+}
 
 /** Сумма PnL за отображаемый месяц (по дням из `days`). */
 const monthNet = computed(() => {
@@ -49,6 +74,8 @@ const cells = computed(() => {
     const inMonth = isSameMonth(d, anchor.value)
     const v = props.days[key]
     const j = props.journalByDay?.[key]
+    const weekKey = weekKeyFromDate(d)
+    const hasWeekAnalysis = props.journalWeekAnalysisByKey?.[weekKey] === true
     const hasPlan = j?.plan === true
     const hasAnalysis = j?.analysis === true
     let journalBadge: { text: string; title: string; kind: 'full' | 'plan' | 'analysis' | 'empty' }
@@ -66,9 +93,53 @@ const cells = computed(() => {
       dayNum: format(d, 'd'),
       inMonth,
       sum: v,
+      hasWeekAnalysis,
       journalBadge,
     }
   })
+})
+
+const weekRows = computed(() => {
+  const rows: Array<{
+    key: string
+    hasWeekAnalysis: boolean
+    cells: Array<(typeof cells.value)[number]>
+  }> = []
+  for (let i = 0; i < cells.value.length; i += 7) {
+    const rowCells = cells.value.slice(i, i + 7)
+    if (rowCells.length === 0) continue
+    const [y, m, d] = rowCells[0].key.split('-').map(Number)
+    const rowDate = y && m && d ? new Date(y, m - 1, d) : new Date()
+    const key = weekKeyFromDate(rowDate)
+    rows.push({
+      key,
+      hasWeekAnalysis: props.journalWeekAnalysisByKey?.[key] === true,
+      cells: rowCells,
+    })
+  }
+  return rows
+})
+
+const monthAnalysisBadge = computed(() => {
+  return props.journalMonthAnalysis
+    ? { text: 'Анализ месяца: есть', kind: 'ok' as const }
+    : { text: 'Анализ месяца: нет', kind: 'off' as const }
+})
+
+const weekAnalysisProgress = computed(() => {
+  const byKey = props.journalWeekAnalysisByKey ?? {}
+  const set = new Set<string>()
+  for (const row of weekRows.value) {
+    if (row.cells.some((c) => c.inMonth)) {
+      set.add(row.key)
+    }
+  }
+  const keys = Array.from(set)
+  const withAnalysis = keys.filter((k) => byKey[k] === true).length
+  return {
+    text: `Анализ недель: ${withAnalysis}/${keys.length}`,
+    kind: withAnalysis > 0 ? 'ok' : 'off',
+  } as const
 })
 
 function prev() {
@@ -103,42 +174,61 @@ function next() {
           >
             ({{ fmtSignedUsdt(monthNet, 0) }})
           </span>
+          <span class="title-count">
+            {{ monthTradesLabel }}
+          </span>
         </h2>
       </div>
       <button type="button" class="btn cal-nav-btn" aria-label="Следующий месяц" @click="next">→</button>
     </div>
+    <div class="period-badges">
+      <span class="period-badge" :class="`period-badge--${monthAnalysisBadge.kind}`">
+        {{ monthAnalysisBadge.text }}
+      </span>
+      <span class="period-badge" :class="`period-badge--${weekAnalysisProgress.kind}`">
+        {{ weekAnalysisProgress.text }}
+      </span>
+    </div>
     <div class="weekdays">
+      <span class="weekdays-empty" aria-hidden="true"></span>
       <span v-for="w in ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс']" :key="w">{{ w }}</span>
     </div>
-    <div class="grid">
-      <button
-        v-for="c in cells"
-        :key="c.key"
-        type="button"
-        class="cell"
-        :class="{
-          off: !c.inMonth,
-          gain: c.inMonth && c.sum != null && c.sum > 0,
-          loss: c.inMonth && c.sum != null && c.sum < 0,
-        }"
-        @click="emit('pick', c.key)"
-      >
-        <span
-          v-if="c.inMonth"
-          class="jbadge"
-          :class="`jbadge--${c.journalBadge.kind}`"
-          :title="c.journalBadge.title"
-        >
-          {{ c.journalBadge.text }}
+    <div class="rows">
+      <div v-for="row in weekRows" :key="row.key" class="week-row">
+        <span class="week-side-badge" :class="row.hasWeekAnalysis ? 'week-side-badge--on' : 'week-side-badge--off'">
+          Н
         </span>
-        <span class="num">{{ c.dayNum }}</span>
-        <span v-if="c.inMonth && c.sum != null && c.sum !== 0" class="mini" :class="c.sum > 0 ? 'pos' : 'neg'">
-          {{ fmtSignedUsdt(c.sum, 0) }}
-        </span>
-      </button>
+        <div class="week-cells">
+          <button
+            v-for="c in row.cells"
+            :key="c.key"
+            type="button"
+            class="cell"
+            :class="{
+              off: !c.inMonth,
+              gain: c.inMonth && c.sum != null && c.sum > 0,
+              loss: c.inMonth && c.sum != null && c.sum < 0,
+            }"
+            @click="emit('pick', c.key)"
+          >
+            <span
+              v-if="c.inMonth"
+              class="jbadge"
+              :class="`jbadge--${c.journalBadge.kind}`"
+              :title="c.journalBadge.title"
+            >
+              {{ c.journalBadge.text }}
+            </span>
+            <span class="num">{{ c.dayNum }}</span>
+            <span v-if="c.inMonth && c.sum != null && c.sum !== 0" class="mini" :class="c.sum > 0 ? 'pos' : 'neg'">
+              {{ fmtSignedUsdt(c.sum, 0) }}
+            </span>
+          </button>
+        </div>
+      </div>
     </div>
     <p class="cal-legend muted">
-      П — план, А — анализ, П+А — оба заполнены, — — пусто
+      П — план, А — анализ, П+А — оба заполнены, Н — есть анализ недели
     </p>
   </div>
 </template>
@@ -198,18 +288,79 @@ function next() {
 .title-net--neg {
   color: #b91c1c;
 }
+.title-count {
+  font-size: 0.8rem;
+  font-weight: 500;
+  color: var(--muted);
+  white-space: nowrap;
+}
 .weekdays {
   display: grid;
-  grid-template-columns: repeat(7, 1fr);
+  grid-template-columns: 1.35rem repeat(7, 1fr);
   gap: 4px;
   margin-bottom: 4px;
   font-size: 0.7rem;
   color: var(--muted);
   text-align: center;
 }
-.grid {
+.weekdays-empty {
+  opacity: 0;
+}
+.period-badges {
+  display: flex;
+  gap: 0.35rem;
+  flex-wrap: wrap;
+  margin-bottom: 0.55rem;
+}
+.period-badge {
+  display: inline-flex;
+  align-items: center;
+  font-size: 0.68rem;
+  line-height: 1.2;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 2px 7px;
+}
+.period-badge--ok {
+  color: #166534;
+  border-color: rgba(22, 101, 52, 0.35);
+  background: rgba(22, 101, 52, 0.1);
+}
+.period-badge--off {
+  color: var(--muted);
+  background: var(--surface);
+}
+.rows {
   display: grid;
-  grid-template-columns: repeat(7, 1fr);
+  gap: 4px;
+}
+.week-row {
+  display: grid;
+  grid-template-columns: 1.35rem minmax(0, 1fr);
+  gap: 4px;
+}
+.week-side-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  font-size: 0.62rem;
+  font-weight: 700;
+  min-height: 60px;
+}
+.week-side-badge--on {
+  color: #166534;
+  border-color: rgba(22, 101, 52, 0.4);
+  background: rgba(22, 101, 52, 0.14);
+}
+.week-side-badge--off {
+  color: var(--muted);
+  background: var(--surface);
+}
+.week-cells {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
   gap: 4px;
 }
 .cell {

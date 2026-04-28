@@ -87,7 +87,10 @@ function goDay(date: string) {
         :year="year"
         :month="month"
         :days="calendar?.days ?? {}"
+        :month-trades-count="calendar?.monthTradesCount ?? 0"
         :journal-by-day="calendar?.journalByDay ?? {}"
+        :journal-month-analysis="calendar?.journalMonthAnalysis === true"
+        :journal-week-analysis-by-key="calendar?.journalWeekAnalysisByKey ?? {}"
         @update:year="year = $event"
         @update:month="month = $event"
         @pick="goDay"
@@ -127,12 +130,7 @@ function goDay(date: string) {
 }
 .bars-row {
   display: grid;
-  grid-template-columns: 1fr 1fr 1fr;
+  grid-template-columns: 1fr;
   gap: 1rem;
-}
-@media (max-width: 1100px) {
-  .bars-row {
-    grid-template-columns: 1fr;
-  }
 }
 </style>

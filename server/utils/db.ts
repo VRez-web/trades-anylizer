@@ -8,8 +8,28 @@ let _sql: ReturnType<typeof postgres> | null = null
 let _db: AppDatabase | null = null
 let _seed: Promise<void> | null = null
 
+function logConnectionHintOnFailure(e: unknown) {
+  const code =
+    (e as NodeJS.ErrnoException)?.code ||
+    (e as { cause?: NodeJS.ErrnoException })?.cause?.code
+  if (code === 'ENETUNREACH' || String(e).includes('ENETUNREACH')) {
+    console.error(
+      '[db] Нет маршрута до хоста БД (часто Supabase Direct = только IPv6). В .env поставь DATABASE_URL ' +
+        'из Supabase → Database → Connect → **Connection pooling**, режим **Session**, порт **5432** ' +
+        '(хост `…pooler.supabase.com`, IPv4), не Direct `db.*.supabase.co`.',
+    )
+  }
+}
+
 function getConnectionString(): string {
-  const u = process.env.DATABASE_URL?.trim() ?? process.env.NUXT_DATABASE_URL?.trim() ?? ''
+  let u = process.env.DATABASE_URL?.trim() ?? process.env.NUXT_DATABASE_URL?.trim() ?? ''
+  if (!u) {
+    try {
+      u = String(useRuntimeConfig().databaseUrl ?? '').trim()
+    } catch {
+      /* вне контекста Nuxt (редко) */
+    }
+  }
   if (!u) {
     throw new Error(
       'Задайте DATABASE_URL (строка подключения PostgreSQL, например Supabase: Project Settings → Database → URI).',
@@ -25,6 +45,7 @@ function createClient() {
     prepare: false,
     ssl: isLocal ? false : 'require',
     max: 10,
+    connect_timeout: 25,
   })
 }
 
@@ -38,6 +59,7 @@ export function useDb(): AppDatabase {
   _db = drizzle(_sql, { schema: appSchema })
   if (!_seed) {
     _seed = ensureStrategyRow(_db).catch((e) => {
+      logConnectionHintOnFailure(e)
       console.error('[db] ensureStrategyRow', e)
     })
   }
