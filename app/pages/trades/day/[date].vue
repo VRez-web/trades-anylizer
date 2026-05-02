@@ -12,7 +12,7 @@ function shiftDay(delta: number) {
 }
 
 const { data: trades, refresh } = await useFetch(
-  () => `/api/trades?day=${encodeURIComponent(date.value)}`,
+  () => `/api/trades?day=${encodeURIComponent(date.value)}&tzOffset=${new Date().getTimezoneOffset()}`,
   { watch: [date] },
 )
 

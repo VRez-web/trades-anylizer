@@ -5,12 +5,13 @@ export default defineEventHandler(async (event) => {
   const q = getQuery(event)
   const y = Number(q.year ?? new Date().getUTCFullYear())
   const m = Number(q.month ?? new Date().getUTCMonth() + 1)
+  const tzOffset = Number(q.tzOffset)
   if (!Number.isFinite(y) || m < 1 || m > 12) {
     throw createError({ statusCode: 400, statusMessage: 'year, month (1-12) required' })
   }
   const db = useDb()
   const [{ byDay, tradesCount }, journalByDay, periodFlags] = await Promise.all([
-    calendarMonth(db, y, m - 1),
+    calendarMonth(db, y, m - 1, Number.isFinite(tzOffset) ? tzOffset : 0),
     calendarMonthJournalFlags(db, y, m),
     calendarMonthPeriodFlags(db, y, m - 1),
   ])

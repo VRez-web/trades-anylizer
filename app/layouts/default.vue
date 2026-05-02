@@ -1,5 +1,6 @@
 <script setup lang="ts">
 const bybitSync = useBybitSyncLoading()
+const syncingNow = ref(false)
 
 async function logout() {
   try {
@@ -8,6 +9,28 @@ async function logout() {
     /* ignore */
   }
   await navigateTo('/login')
+}
+
+async function runBybitSync() {
+  if (syncingNow.value || bybitSync.value.active) return
+  syncingNow.value = true
+  bybitSync.value.active = true
+  try {
+    await $fetch('/api/sync/bybit', {
+      method: 'POST',
+      body: { days: 365 },
+    })
+    await refreshNuxtData()
+  } catch (e: unknown) {
+    const msg =
+      e && typeof e === 'object' && 'data' in e
+        ? String((e as { data?: { statusMessage?: string } }).data?.statusMessage ?? '')
+        : ''
+    alert(msg || 'Не удалось запустить синк с Bybit')
+  } finally {
+    bybitSync.value.active = false
+    syncingNow.value = false
+  }
 }
 </script>
 
@@ -27,6 +50,14 @@ async function logout() {
             <NuxtLink to="/journal/month">Месяц</NuxtLink>
             <NuxtLink to="/journal/year">Год</NuxtLink>
           </div>
+          <button
+            type="button"
+            class="btn btn-tiny"
+            :disabled="syncingNow || bybitSync.active"
+            @click="runBybitSync"
+          >
+            Синк Bybit
+          </button>
           <button type="button" class="btn btn-tiny logout-btn" @click="logout">Выйти</button>
         </nav>
       </div>

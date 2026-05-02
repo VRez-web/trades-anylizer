@@ -13,7 +13,7 @@ const dateStr = computed(() => {
 })
 
 const { data, refresh } = await useFetch(
-  () => `/api/journal/day?date=${encodeURIComponent(dateStr.value)}`,
+  () => `/api/journal/day?date=${encodeURIComponent(dateStr.value)}&tzOffset=${new Date().getTimezoneOffset()}`,
   { watch: [dateStr] },
 )
 

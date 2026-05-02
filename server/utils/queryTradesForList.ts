@@ -2,7 +2,7 @@ import { and, asc, desc, eq, gte, inArray, lte, not, or, sql } from 'drizzle-orm
 import type { SQL } from 'drizzle-orm'
 import { trades, tradeLabelLinks } from '../database/schema'
 import type { AppDatabase } from '../types/app-database'
-import { localDayBounds } from './stats'
+import { dayBoundsAtOffset, localDayBounds } from './stats'
 import type { TradeRow } from './tradeMath'
 
 type Db = AppDatabase
@@ -49,7 +49,8 @@ function appendRrFilter(conditions: SQL[], q: Record<string, unknown>) {
 /** Общая выборка для `/api/trades` и `/api/trades/infographic` (без `day` — только список с фильтрами). */
 export async function queryTradesForList(db: Db, q: Record<string, unknown>): Promise<TradeRow[]> {
   if (q.day && typeof q.day === 'string') {
-    const { from, to } = localDayBounds(q.day)
+    const tzOffset = Number(q.tzOffset)
+    const { from, to } = Number.isFinite(tzOffset) ? dayBoundsAtOffset(q.day, tzOffset) : localDayBounds(q.day)
     const dayCond: SQL[] = [gte(trades.exitAt, from), lte(trades.exitAt, to)]
     appendAnalysisFilter(dayCond, q)
     appendRrFilter(dayCond, q)

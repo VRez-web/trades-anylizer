@@ -32,7 +32,7 @@ watch([year, month], ([yy, mm]) => {
 })
 
 const calendarUrl = computed(
-  () => `/api/stats/calendar?year=${year.value}&month=${month.value}`,
+  () => `/api/stats/calendar?year=${year.value}&month=${month.value}&tzOffset=${new Date().getTimezoneOffset()}`,
 )
 const { data: calendar } = await useFetch(calendarUrl)
 

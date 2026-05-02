@@ -447,6 +447,7 @@ async function save() {
           <TradeRrCalculator
             :side="data.trade.side"
             :entry-price="data.trade.entryPrice"
+            :exit-price="form.exitPrice"
             @apply-rr="form.rr = $event"
           />
           <template #fallback>

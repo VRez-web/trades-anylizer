@@ -2,18 +2,19 @@ import { and, gte, lte, asc, eq } from 'drizzle-orm'
 import { useDb } from '../../utils/db'
 import { trades, periodNotes } from '../../database/schema'
 import { serializeTrade } from '../../utils/serialize'
-import { aggregateTrades, localDayBounds } from '../../utils/stats'
+import { aggregateTrades, dayBoundsAtOffset, localDayBounds } from '../../utils/stats'
 
 export default defineEventHandler(async (event) => {
   const q = getQuery(event)
   const dateStr = String(q.date ?? '')
+  const tzOffset = Number(q.tzOffset)
   if (!/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
     throw createError({ statusCode: 400, statusMessage: 'date=YYYY-MM-DD' })
   }
   let from: Date
   let to: Date
   try {
-    ;({ from, to } = localDayBounds(dateStr))
+    ;({ from, to } = Number.isFinite(tzOffset) ? dayBoundsAtOffset(dateStr, tzOffset) : localDayBounds(dateStr))
   } catch {
     throw createError({ statusCode: 400, statusMessage: 'Invalid date' })
   }

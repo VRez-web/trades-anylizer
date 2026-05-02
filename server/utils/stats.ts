@@ -20,29 +20,50 @@ async function listTradesInRange(db: Db, from: Date, to: Date) {
 }
 
 export function exitDateKeyLocal(exitAt: Date) {
-  return `${exitAt.getFullYear()}-${String(exitAt.getMonth() + 1).padStart(2, '0')}-${String(exitAt.getDate()).padStart(2, '0')}`
+  return exitDateKeyAtOffset(exitAt, 0)
+}
+
+function parseDateKey(dateStr: string) {
+  const [y, m, d] = dateStr.split('-').map(Number)
+  if (!y || !m || !d) throw new Error('Invalid date')
+  return { y, m, d }
+}
+
+/** tzOffsetMinutes как у JS Date#getTimezoneOffset (UTC - local), напр. Москва: -180 */
+export function dayBoundsAtOffset(dateStr: string, tzOffsetMinutes: number) {
+  const { y, m, d } = parseDateKey(dateStr)
+  const fromMs = Date.UTC(y, m - 1, d, 0, 0, 0, 0) + tzOffsetMinutes * 60_000
+  const toMs = fromMs + 24 * 60 * 60 * 1000 - 1
+  return { from: new Date(fromMs), to: new Date(toMs) }
+}
+
+export function monthBoundsAtOffset(year: number, monthIndex0: number, tzOffsetMinutes: number) {
+  const fromMs = Date.UTC(year, monthIndex0, 1, 0, 0, 0, 0) + tzOffsetMinutes * 60_000
+  const toMs = Date.UTC(year, monthIndex0 + 1, 1, 0, 0, 0, 0) + tzOffsetMinutes * 60_000 - 1
+  const from = new Date(fromMs)
+  const to = new Date(toMs)
+  return { from, to }
+}
+
+export function exitDateKeyAtOffset(exitAt: Date, tzOffsetMinutes: number) {
+  const shifted = new Date(exitAt.getTime() - tzOffsetMinutes * 60_000)
+  return `${shifted.getUTCFullYear()}-${String(shifted.getUTCMonth() + 1).padStart(2, '0')}-${String(shifted.getUTCDate()).padStart(2, '0')}`
 }
 
 export function localMonthBounds(year: number, monthIndex0: number) {
-  const from = new Date(year, monthIndex0, 1, 0, 0, 0, 0)
-  const to = new Date(year, monthIndex0 + 1, 0, 23, 59, 59, 999)
-  return { from, to }
+  return monthBoundsAtOffset(year, monthIndex0, 0)
 }
 
 export function localDayBounds(dateStr: string) {
-  const [y, m, d] = dateStr.split('-').map(Number)
-  if (!y || !m || !d) throw new Error('Invalid date')
-  const from = new Date(y, m - 1, d, 0, 0, 0, 0)
-  const to = new Date(y, m - 1, d, 23, 59, 59, 999)
-  return { from, to }
+  return dayBoundsAtOffset(dateStr, 0)
 }
 
-export async function calendarMonth(db: Db, year: number, monthIndex0: number) {
-  const { from, to } = localMonthBounds(year, monthIndex0)
+export async function calendarMonth(db: Db, year: number, monthIndex0: number, tzOffsetMinutes = 0) {
+  const { from, to } = monthBoundsAtOffset(year, monthIndex0, tzOffsetMinutes)
   const rows = await listTradesInRange(db, from, to)
   const byDay = new Map<string, number>()
   for (const t of rows) {
-    const k = exitDateKeyLocal(t.exitAt)
+    const k = exitDateKeyAtOffset(t.exitAt, tzOffsetMinutes)
     byDay.set(k, (byDay.get(k) ?? 0) + netForTrade(t))
   }
   return { byDay, from, to, tradesCount: rows.length }

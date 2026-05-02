@@ -2,6 +2,8 @@
 const props = defineProps<{
   side: 'long' | 'short'
   entryPrice: number
+  /** Цена фактического выхода — подставляется в «Тейк»; поле можно поменять для «что если». */
+  exitPrice?: number | null
 }>()
 
 const emit = defineEmits<{
@@ -12,6 +14,16 @@ const stopLoss = ref('')
 const takeProfit = ref('')
 
 const { fmtInstrumentPrice } = useMoney()
+
+watch(
+  () => props.exitPrice,
+  (exit) => {
+    if (typeof exit === 'number' && Number.isFinite(exit) && exit !== 0) {
+      takeProfit.value = String(exit)
+    }
+  },
+  { immediate: true },
+)
 
 const parsed = computed(() => {
   const e = props.entryPrice
@@ -48,6 +60,7 @@ function apply() {
       <template v-else>
         Short: TP &lt; вход &lt; SL. Риск = SL − вход, награда = вход − TP.
       </template>
+      Тейк по умолчанию — цена выхода сделки; можно заменить для расчёта планового RR.
     </p>
     <div class="rr-grid">
       <label class="lbl">
