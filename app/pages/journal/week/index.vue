@@ -54,6 +54,19 @@ const { fmtUsdt } = useMoney()
       <p class="week-summary-label">Итого за неделю</p>
       <JournalMetrics compact :stats="data.stats" />
     </section>
+    <h3 class="info-h">По лейблам</h3>
+    <p class="muted info-note">
+      Сделка с несколькими лейблами учитывается в каждой группе; «без лейблов» — без привязки к лейблу.
+    </p>
+    <div class="info-grid">
+      <div v-for="row in data?.labelSummary ?? []" :key="row.key" class="info-tile info-tile--wide">
+        <div class="info-tile__lbl">{{ row.key }}</div>
+        <div class="info-tile__meta">
+          <span>{{ row.count }} упом.</span>
+          <strong :class="row.sum >= 0 ? 'pos' : 'neg'">{{ fmtUsdt(row.sum) }}</strong>
+        </div>
+      </div>
+    </div>
 
     <div class="week-split">
       <section v-if="data?.dayBlocks?.length" class="week-days">
@@ -128,6 +141,50 @@ const { fmtUsdt } = useMoney()
   text-transform: uppercase;
   letter-spacing: 0.04em;
   color: var(--muted);
+}
+.info-h {
+  margin: 0 0 0.5rem;
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+.info-note {
+  font-size: 0.78rem;
+  margin: 0 0 0.6rem;
+  max-width: 52rem;
+}
+.info-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 0.5rem 0.65rem;
+  margin-bottom: 1rem;
+}
+.info-tile {
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.45rem 0.55rem;
+  font-size: 0.8125rem;
+}
+.info-tile--wide {
+  min-width: 0;
+}
+.info-tile__lbl {
+  font-weight: 500;
+  margin-bottom: 0.25rem;
+  word-break: break-word;
+  line-height: 1.3;
+}
+.info-tile__meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.35rem;
+  color: var(--muted);
+  font-size: 0.75rem;
+}
+.info-tile__meta strong {
+  font-size: 0.8125rem;
 }
 
 .week-split {

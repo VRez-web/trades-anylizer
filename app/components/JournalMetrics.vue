@@ -11,6 +11,7 @@ const props = defineProps<{
     commission: number
     funding: number
     avgLeverage: number
+    avgRr: number | null
   }
 }>()
 
@@ -51,6 +52,10 @@ function pct(part: number) {
     <div>
       <dt>Среднее плечо</dt>
       <dd>{{ fmt(props.stats.avgLeverage) }}</dd>
+    </div>
+    <div>
+      <dt>Средний RR</dt>
+      <dd>{{ props.stats.avgRr == null ? '—' : fmt(props.stats.avgRr) }}</dd>
     </div>
   </dl>
 </template>

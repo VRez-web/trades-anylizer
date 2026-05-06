@@ -88,6 +88,14 @@ const tradesForChart = computed((): JournalDayTrade[] => {
     )
 })
 
+const rrByTradeId = computed(() => {
+  const out = new Map<number, number>()
+  for (const t of data.value?.trades ?? []) {
+    if (typeof t.rr === 'number' && Number.isFinite(t.rr)) out.set(t.id, t.rr)
+  }
+  return out
+})
+
 const { fmtInstrumentPrice, fmtSignedUsdt } = useMoney()
 
 async function saveNote() {
@@ -150,6 +158,9 @@ async function saveNote() {
                 Сделка {{ i + 1 }}:
                 {{ fmtInstrumentPrice(t.entryPrice) }} → {{ fmtInstrumentPrice(t.exitPrice) }} · чистый
                 <span :class="t.net >= 0 ? 'pos' : 'neg'">{{ fmtSignedUsdt(t.net, 2) }}</span>
+                <template v-if="rrByTradeId.has(t.id)">
+                  · RR {{ rrByTradeId.get(t.id)?.toFixed(2) }}
+                </template>
                 <NuxtLink :to="`/trades/${t.id}`" class="trade-link">Открыть сделку</NuxtLink>
               </li>
             </ul>

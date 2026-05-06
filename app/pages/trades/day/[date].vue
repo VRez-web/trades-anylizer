@@ -209,6 +209,7 @@ async function unmergeGroup(mergeGroupId: number) {
           <th>Вход</th>
           <th>Выход</th>
           <th>Чистый</th>
+          <th>Лейблы</th>
           <th>Общий</th>
           <th>ТС</th>
           <th>Слияние</th>
@@ -243,6 +244,17 @@ async function unmergeGroup(mergeGroupId: number) {
           <td :class="t.net >= 0 ? 'pos' : 'neg'">
             {{ fmtUsdt(t.net) }}
             <span v-if="tradePricePct(t)" class="net-pct-bracket muted"> ({{ tradePricePct(t) }})</span>
+          </td>
+          <td>
+            <div class="labels-wrap">
+              <template
+                v-for="(lbl, idx) in [...(t.labels?.system ?? []), ...(t.labels?.technique ?? []), ...(t.labels?.psychology ?? [])]"
+                :key="`${t.id}:${lbl}:${idx}`"
+              >
+                <span class="lbl-pill">{{ lbl }}</span>
+              </template>
+              <span v-if="!(t.labels?.system?.length || t.labels?.technique?.length || t.labels?.psychology?.length)" class="muted">—</span>
+            </div>
           </td>
           <td>
             <span class="analysis-cell" :class="t.generalAnalysisDone ? 'yes' : 'no'">{{
@@ -383,6 +395,22 @@ async function unmergeGroup(mergeGroupId: number) {
 }
 .analysis-cell.no {
   color: var(--muted);
+}
+.labels-wrap {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+  max-width: 280px;
+}
+.lbl-pill {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 0.05rem 0.4rem;
+  font-size: 0.7rem;
+  line-height: 1.3;
+  background: var(--surface2);
 }
 .h2-row {
   display: flex;

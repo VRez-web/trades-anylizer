@@ -203,6 +203,8 @@ export function aggregateTrades(list: TradeRow[]) {
   let commission = 0
   let funding = 0
   let levSum = 0
+  let rrSum = 0
+  let rrCount = 0
   for (const t of list) {
     const n = netForTrade(t)
     if (n > 0) wins++
@@ -213,6 +215,10 @@ export function aggregateTrades(list: TradeRow[]) {
     commission += t.commission
     funding += t.funding
     levSum += t.leverage
+    if (typeof t.rr === 'number' && Number.isFinite(t.rr)) {
+      rrSum += t.rr
+      rrCount++
+    }
   }
   const c = list.length
   return {
@@ -224,6 +230,7 @@ export function aggregateTrades(list: TradeRow[]) {
     commission,
     funding,
     avgLeverage: c ? levSum / c : 0,
+    avgRr: rrCount ? rrSum / rrCount : null,
   }
 }
 
