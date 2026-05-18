@@ -13,7 +13,7 @@ import {
 } from './bybitCredentials'
 import { parseMergedFrom, type MergedFromLeg } from './serialize'
 
-type LegCandidate = {
+export type LegCandidate = {
   entryAt: Date
   exitAt: Date
   entryPrice: number
@@ -27,7 +27,7 @@ function str(row: Record<string, unknown>, k: string): string {
   return v == null ? '' : String(v)
 }
 
-function parseClosedPnlRow(row: Record<string, unknown>): LegCandidate | null {
+export function parseClosedPnlRow(row: Record<string, unknown>): LegCandidate | null {
   const entryPrice = parseFloat(str(row, 'avgEntryPrice'))
   const exitPrice = parseFloat(str(row, 'avgExitPrice'))
   const closedPnl = parseFloat(str(row, 'closedPnl'))
@@ -77,7 +77,7 @@ function combinationsOfSize<T>(arr: T[], k: number): T[][] {
 
 const MAX_FOR_COMBINATORICS = 18
 
-function pickLegsFromCandidates(
+export function pickLegsFromCandidates(
   candidates: LegCandidate[],
   n: number,
   tradeIncome: number,
@@ -97,7 +97,7 @@ function pickLegsFromCandidates(
   return hits[0]!
 }
 
-function filterRowsForTrade(
+export function filterRowsForTrade(
   rows: Record<string, unknown>[],
   symbol: string,
   side: 'long' | 'short',

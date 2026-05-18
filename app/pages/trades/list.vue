@@ -13,6 +13,8 @@ type TradeRow = {
   labels?: LabelItem[]
 }
 
+const LIST_FILTERS_KEY = 'trades-analyzer:list-filters'
+
 const side = ref<'all' | 'long' | 'short'>('all')
 const result = ref<'all' | 'win' | 'loss'>('all')
 /** all — без фильтра; with/without — как в isAnalysisComplete (общий и/или ТС). */
@@ -21,10 +23,11 @@ const fromDate = ref('')
 const toDate = ref('')
 const rrMin = ref('')
 const rrMax = ref('')
-const labelId = ref('')
+const labelIds = ref<number[]>([])
 const sort = ref<'exit_desc' | 'exit_asc'>('exit_desc')
 
 const infoOpen = ref(false)
+const filtersReady = ref(false)
 
 const { data: allLabels } = await useFetch('/api/labels')
 
@@ -47,10 +50,71 @@ const query = computed(() => {
   if (rrMin.value !== '' && Number.isFinite(min)) q.rrMin = String(min)
   const max = Number(rrMax.value)
   if (rrMax.value !== '' && Number.isFinite(max)) q.rrMax = String(max)
-  const lid = Number(labelId.value)
-  if (labelId.value !== '' && Number.isFinite(lid) && lid > 0) q.labelId = String(lid)
+  if (labelIds.value.length) q.labelIds = labelIds.value.join(',')
   return q
 })
+
+type SavedListFilters = {
+  side?: typeof side.value
+  result?: typeof result.value
+  analysis?: typeof analysis.value
+  fromDate?: string
+  toDate?: string
+  rrMin?: string
+  rrMax?: string
+  labelIds?: number[]
+  sort?: typeof sort.value
+  infoOpen?: boolean
+}
+
+function loadSavedFilters() {
+  try {
+    const raw = localStorage.getItem(LIST_FILTERS_KEY)
+    if (!raw) return
+    const j = JSON.parse(raw) as SavedListFilters
+    if (j.side === 'all' || j.side === 'long' || j.side === 'short') side.value = j.side
+    if (j.result === 'all' || j.result === 'win' || j.result === 'loss') result.value = j.result
+    if (j.analysis === 'all' || j.analysis === 'with' || j.analysis === 'without') analysis.value = j.analysis
+    if (typeof j.fromDate === 'string') fromDate.value = j.fromDate
+    if (typeof j.toDate === 'string') toDate.value = j.toDate
+    if (typeof j.rrMin === 'string') rrMin.value = j.rrMin
+    if (typeof j.rrMax === 'string') rrMax.value = j.rrMax
+    if (Array.isArray(j.labelIds)) {
+      labelIds.value = j.labelIds.filter((n) => Number.isFinite(n) && n > 0)
+    }
+    if (j.sort === 'exit_desc' || j.sort === 'exit_asc') sort.value = j.sort
+    if (j.infoOpen === true) infoOpen.value = true
+  } catch {
+    /* ignore */
+  }
+}
+
+function saveFilters() {
+  if (!import.meta.client || !filtersReady.value) return
+  const payload: SavedListFilters = {
+    side: side.value,
+    result: result.value,
+    analysis: analysis.value,
+    fromDate: fromDate.value,
+    toDate: toDate.value,
+    rrMin: rrMin.value,
+    rrMax: rrMax.value,
+    labelIds: [...labelIds.value],
+    sort: sort.value,
+    infoOpen: infoOpen.value,
+  }
+  localStorage.setItem(LIST_FILTERS_KEY, JSON.stringify(payload))
+}
+
+function toggleLabelId(id: number) {
+  const i = labelIds.value.indexOf(id)
+  if (i === -1) labelIds.value = [...labelIds.value, id]
+  else labelIds.value = labelIds.value.filter((x) => x !== id)
+}
+
+function clearLabelIds() {
+  labelIds.value = []
+}
 
 const listUrl = computed(() => {
   const p = new URLSearchParams()
@@ -93,6 +157,21 @@ async function toggleInfographic() {
 watch(query, () => {
   if (infoOpen.value) refreshInfo()
 })
+
+onMounted(() => {
+  loadSavedFilters()
+  filtersReady.value = true
+  saveFilters()
+  if (infoOpen.value) refreshInfo()
+})
+
+watch(
+  [side, result, analysis, fromDate, toDate, rrMin, rrMax, labelIds, sort, infoOpen],
+  () => {
+    saveFilters()
+  },
+  { deep: true },
+)
 
 const { fmtUsdt } = useMoney()
 
@@ -165,10 +244,10 @@ const byLabel = computed(() => {
   return [...m.entries()].sort((a, b) => Math.abs(b[1].net) - Math.abs(a[1].net))
 })
 
-const byExitHour = computed(() => {
+const byEntryHour = computed(() => {
   const m = new Map<number, { net: number; count: number }>()
   for (const t of infoTrades.value) {
-    const h = new Date(t.exitAt).getHours()
+    const h = new Date(t.entryAt).getHours()
     const cur = m.get(h) ?? { net: 0, count: 0 }
     cur.net += t.net
     cur.count += 1
@@ -267,13 +346,30 @@ function fmtRr(v: number | null) {
           <span class="fl-l">RR до</span>
           <input v-model="rrMax" class="input" type="number" step="0.1" />
         </label>
-        <label class="fl fl-label-span">
-          <span class="fl-l">Лейбл</span>
-          <select v-model="labelId" class="input">
-            <option value="">Любой</option>
-            <option v-for="o in labelOptions" :key="o.id" :value="o.id">{{ o.label }}</option>
-          </select>
-        </label>
+        <div class="fl fl-label-span label-filter">
+          <div class="label-filter-head">
+            <span class="fl-l">Лейблы</span>
+            <button
+              v-if="labelIds.length"
+              type="button"
+              class="btn btn-tiny label-filter-clear"
+              @click="clearLabelIds"
+            >
+              Сбросить ({{ labelIds.length }})
+            </button>
+          </div>
+          <p class="muted label-filter-hint">Можно выбрать несколько — сделка с любым из отмеченных.</p>
+          <div class="label-filter-list">
+            <label v-for="o in labelOptions" :key="o.id" class="label-filter-item">
+              <input
+                type="checkbox"
+                :checked="labelIds.includes(o.id)"
+                @change="toggleLabelId(o.id)"
+              />
+              <span>{{ o.label }}</span>
+            </label>
+          </div>
+        </div>
       </div>
       <div class="filters-toolbar">
         <label class="fl fl-sort">
@@ -406,9 +502,9 @@ function fmtRr(v: number | null) {
           </div>
         </div>
 
-        <h3 class="info-h">По часу выхода (локальное время)</h3>
+        <h3 class="info-h">По часу входа (локальное время)</h3>
         <div class="info-grid info-grid--hours">
-          <div v-for="[h, agg] in byExitHour" :key="h" class="info-tile info-tile--hour">
+          <div v-for="[h, agg] in byEntryHour" :key="h" class="info-tile info-tile--hour">
             <div class="info-tile__sym">{{ h }}:00</div>
             <div class="info-tile__meta">
               <span>{{ agg.count }}</span>
@@ -740,5 +836,46 @@ function fmtRr(v: number | null) {
 }
 .info-tile__meta strong {
   font-size: 0.8125rem;
+}
+.label-filter {
+  grid-column: 1 / -1;
+}
+.label-filter-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.35rem 0.75rem;
+  margin-bottom: 0.25rem;
+}
+.label-filter-hint {
+  margin: 0 0 0.45rem;
+  font-size: 0.75rem;
+}
+.label-filter-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem 0.65rem;
+  max-height: 9rem;
+  overflow-y: auto;
+  padding: 0.35rem 0.45rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface2);
+}
+.label-filter-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.8125rem;
+  cursor: pointer;
+  user-select: none;
+}
+.label-filter-item input {
+  flex-shrink: 0;
+}
+.label-filter-clear {
+  font-size: 0.7rem;
+  padding: 0.2rem 0.45rem;
 }
 </style>

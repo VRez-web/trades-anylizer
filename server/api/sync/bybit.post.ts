@@ -12,6 +12,7 @@ import {
   bybitBaseUrl,
   BybitGeoBlockedError,
 } from '../../utils/bybitCredentials'
+import { cleanupAllMergedOrphans, ensureMergedTradeGuards } from '../../utils/mergedTradeSync'
 
 type TradeInsert = InferInsertModel<typeof trades>
 
@@ -104,12 +105,29 @@ export default defineEventHandler(async (event) => {
     })) as Record<string, string>[]
     const db = useDb()
     const now = new Date()
+    const removedOrphansBefore = await cleanupAllMergedOrphans(db)
+    const { suppressed, backfilled } = await ensureMergedTradeGuards(db, list, category)
     let inserted = 0
     let updated = 0
+    let skippedMerged = 0
+    let removedDuplicates = 0
     for (const row of list) {
       const m = mapRow(row, category, now)
       if (!m) continue
-      const [existing] = await db.select({ id: trades.id }).from(trades).where(eq(trades.externalKey, m.externalKey!))
+      const extKey = m.externalKey!
+      if (suppressed.has(extKey)) {
+        const [existing] = await db
+          .select({ id: trades.id, mergedFrom: trades.mergedFrom })
+          .from(trades)
+          .where(eq(trades.externalKey, extKey))
+        if (existing && !existing.mergedFrom) {
+          await db.delete(trades).where(eq(trades.id, existing.id))
+          removedDuplicates++
+        }
+        skippedMerged++
+        continue
+      }
+      const [existing] = await db.select({ id: trades.id }).from(trades).where(eq(trades.externalKey, extKey))
       if (existing) {
         await db
           .update(trades)
@@ -134,6 +152,7 @@ export default defineEventHandler(async (event) => {
         inserted++
       }
     }
+    const removedOrphansAfter = await cleanupAllMergedOrphans(db)
     const hint =
       list.length === 0
         ? 'За выбранный период закрытый PnL по linear/inverse пустой. Частые причины: торгуете только спотом (этот импорт — деривативы), нет закрытых позиций за период, неверный mainnet/testnet. Попробуйте увеличить days (например 365) или category=inverse.'
@@ -146,6 +165,10 @@ export default defineEventHandler(async (event) => {
       fetched: list.length,
       inserted,
       updated,
+      skippedMerged,
+      removedDuplicates,
+      removedOrphans: removedOrphansBefore + removedOrphansAfter,
+      backfilledMergedKeys: backfilled,
       hint,
     }
   } catch (e) {

@@ -3,6 +3,7 @@ import { useDb } from '../../utils/db'
 import { trades, periodNotes } from '../../database/schema'
 import { serializeTrade } from '../../utils/serialize'
 import { aggregateTrades, dayBoundsAtOffset, localDayBounds } from '../../utils/stats'
+import { selectTradesExcludingMergedOrphans } from '../../utils/mergedTradeSync'
 
 export default defineEventHandler(async (event) => {
   const q = getQuery(event)
@@ -19,11 +20,12 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 400, statusMessage: 'Invalid date' })
   }
   const db = useDb()
-  const list = await db
+  const rawList = await db
     .select()
     .from(trades)
     .where(and(gte(trades.exitAt, from), lte(trades.exitAt, to)))
     .orderBy(asc(trades.exitAt))
+  const list = await selectTradesExcludingMergedOrphans(db, rawList)
   const stats = aggregateTrades(list)
   const [note] = await db
     .select()

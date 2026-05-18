@@ -19,6 +19,8 @@ export type MergedFromLeg = {
 export type MergedFromParsed = {
   sourceIds: number[]
   legs?: MergedFromLeg[]
+  /** Bybit external_key исходных ног — не импортировать повторно при синке. */
+  sourceExternalKeys?: string[]
 }
 
 function parseMergedLeg(raw: unknown): MergedFromLeg | null {
@@ -38,7 +40,11 @@ function parseMergedLeg(raw: unknown): MergedFromLeg | null {
 export function parseMergedFrom(raw: string | null | undefined): MergedFromParsed | null {
   if (raw == null || !String(raw).trim()) return null
   try {
-    const j = JSON.parse(String(raw)) as { sourceIds?: unknown; legs?: unknown }
+    const j = JSON.parse(String(raw)) as {
+      sourceIds?: unknown
+      legs?: unknown
+      sourceExternalKeys?: unknown
+    }
     if (!Array.isArray(j.sourceIds)) return null
     const sourceIds = j.sourceIds.filter((x): x is number => Number.isFinite(Number(x))).map(Number)
     if (!sourceIds.length) return null
@@ -46,6 +52,11 @@ export function parseMergedFrom(raw: string | null | undefined): MergedFromParse
     if (Array.isArray(j.legs)) {
       const legs = j.legs.map(parseMergedLeg).filter((x): x is MergedFromLeg => x != null)
       if (legs.length) out.legs = legs
+    }
+    if (Array.isArray(j.sourceExternalKeys)) {
+      out.sourceExternalKeys = j.sourceExternalKeys
+        .map((x) => String(x ?? '').trim())
+        .filter((x) => x.length > 0)
     }
     return out
   } catch {

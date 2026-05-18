@@ -1,4 +1,5 @@
 import type { TradeRow } from './tradeMath'
+import { buildMergedFromJson, sourceExternalKeysFromRows } from './mergedTradeSync'
 
 function mergeNoteField(rows: TradeRow[], pick: (r: TradeRow) => string | null): string | null {
   const parts: string[] = []
@@ -86,7 +87,8 @@ export function buildMergedTradePayload(rows: TradeRow[], now: Date): MergedTrad
       exitPrice: r.exitPrice,
     }))
     .sort((a, b) => new Date(a.entryAt).getTime() - new Date(b.entryAt).getTime())
-  const mergedFrom = JSON.stringify({ sourceIds, legs })
+  const sourceExternalKeys = sourceExternalKeysFromRows(rows)
+  const mergedFrom = buildMergedFromJson(sourceIds, legs, sourceExternalKeys)
   const externalKey = `merged:${sourceIds.join(':')}`
 
   const createdAt = new Date(Math.min(...rows.map((r) => r.createdAt.getTime())))

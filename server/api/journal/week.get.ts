@@ -4,6 +4,7 @@ import { useDb } from '../../utils/db'
 import { trades, periodNotes, labelDefs, tradeLabelLinks } from '../../database/schema'
 import { aggregateTrades, periodKeyWeek, exitDateKeyLocal } from '../../utils/stats'
 import { netProfit } from '../../utils/tradeMath'
+import { selectTradesExcludingMergedOrphans } from '../../utils/mergedTradeSync'
 
 export default defineEventHandler(async (event) => {
   const offset = Number(getQuery(event).offset ?? 0)
@@ -13,11 +14,12 @@ export default defineEventHandler(async (event) => {
   const end = endOfISOWeek(base, { weekStartsOn: 1 })
   const weekKey = periodKeyWeek(base)
   const db = useDb()
-  const list = await db
+  const rawList = await db
     .select()
     .from(trades)
     .where(and(gte(trades.exitAt, start), lte(trades.exitAt, end)))
     .orderBy(asc(trades.exitAt))
+  const list = await selectTradesExcludingMergedOrphans(db, rawList)
   const stats = aggregateTrades(list)
   const tradeIds = list.map((t) => t.id)
   let labelSummary: { key: string; count: number; sum: number }[] = []
