@@ -88,6 +88,7 @@ export function serializeTrade(t: TradeRow) {
     noteTechniqueTs: t.noteTechniqueTs,
     noteAnalysisTs: t.noteAnalysisTs,
     mergeGroupId: t.mergeGroupId,
+    tradeSource: t.tradeSource,
     mergedFrom: parseMergedFrom(t.mergedFrom),
     analysisDone: isAnalysisComplete(t),
     generalAnalysisDone: isGeneralAnalysisComplete(t),

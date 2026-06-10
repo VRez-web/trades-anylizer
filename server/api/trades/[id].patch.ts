@@ -3,6 +3,7 @@ import { useDb } from '../../utils/db'
 import { trades } from '../../database/schema'
 import { parseLabelIds } from '../../utils/labelIdsBody'
 import { replaceTradeLabels } from '../../utils/tradeLabels'
+import { parseTradeSource } from '../../utils/tradeSource'
 
 export default defineEventHandler(async (event) => {
   const id = Number(getRouterParam(event, 'id'))
@@ -51,6 +52,9 @@ export default defineEventHandler(async (event) => {
       patch2.noteTechniqueTs = body.noteTechniqueTs == null ? null : String(body.noteTechniqueTs)
     if ('noteAnalysisTs' in body)
       patch2.noteAnalysisTs = body.noteAnalysisTs == null ? null : String(body.noteAnalysisTs)
+    if ('tradeSource' in body && body.tradeSource !== undefined) {
+      patch2.tradeSource = parseTradeSource(body.tradeSource)
+    }
     await db.update(trades).set(patch2 as never).where(eq(trades.id, id))
     if (labelIdsPatch) await replaceTradeLabels(db, id, labelIdsPatch)
     const [row2] = await db.select().from(trades).where(eq(trades.id, id))
@@ -82,6 +86,9 @@ export default defineEventHandler(async (event) => {
   if ('noteTechniqueTs' in body)
     patch.noteTechniqueTs = body.noteTechniqueTs == null ? null : String(body.noteTechniqueTs)
   if ('noteAnalysisTs' in body) patch.noteAnalysisTs = body.noteAnalysisTs == null ? null : String(body.noteAnalysisTs)
+  if ('tradeSource' in body && body.tradeSource !== undefined) {
+    patch.tradeSource = parseTradeSource(body.tradeSource)
+  }
   await db.update(trades).set(patch as never).where(eq(trades.id, id))
   if (labelIdsPatch) await replaceTradeLabels(db, id, labelIdsPatch)
   const [row] = await db.select().from(trades).where(eq(trades.id, id))

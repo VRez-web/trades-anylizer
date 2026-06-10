@@ -2,6 +2,7 @@ import { useDb } from '../../utils/db'
 import { trades } from '../../database/schema'
 import { parseLabelIds } from '../../utils/labelIdsBody'
 import { replaceTradeLabels } from '../../utils/tradeLabels'
+import { parseTradeSource } from '../../utils/tradeSource'
 
 function parseBody(body: Record<string, unknown>) {
   const symbol = String(body.symbol ?? '')
@@ -38,6 +39,7 @@ function parseBody(body: Record<string, unknown>) {
     noteSystemTs: body.noteSystemTs != null ? String(body.noteSystemTs) : null,
     noteTechniqueTs: body.noteTechniqueTs != null ? String(body.noteTechniqueTs) : null,
     noteAnalysisTs: body.noteAnalysisTs != null ? String(body.noteAnalysisTs) : null,
+    tradeSource: parseTradeSource(body.tradeSource),
     createdAt: now,
     updatedAt: now,
   }

@@ -3,6 +3,13 @@ import { useDb } from '../../utils/db'
 import { trades, periodNotes } from '../../database/schema'
 import { serializeTrade } from '../../utils/serialize'
 import { aggregateTrades, periodKeyMonth, localMonthBounds } from '../../utils/stats'
+import { selectTradesExcludingMergedOrphans } from '../../utils/mergedTradeSync'
+import {
+  fetchTradeLabelLinks,
+  labelSummaryFromTrades,
+  sideWinRateStats,
+  symbolSummary,
+} from '../../utils/journalAnalytics'
 
 export default defineEventHandler(async (event) => {
   const q = getQuery(event)
@@ -14,12 +21,18 @@ export default defineEventHandler(async (event) => {
   const monthKey = `${y}-${String(m).padStart(2, '0')}`
   const { from, to } = localMonthBounds(y, m - 1)
   const db = useDb()
-  const list = await db
+  const rawList = await db
     .select()
     .from(trades)
     .where(and(gte(trades.exitAt, from), lte(trades.exitAt, to)))
     .orderBy(asc(trades.exitAt))
+  const list = await selectTradesExcludingMergedOrphans(db, rawList)
   const stats = aggregateTrades(list)
+  const tradeIds = list.map((t) => t.id)
+  const linksByTrade = await fetchTradeLabelLinks(db, tradeIds)
+  const sideWinRate = sideWinRateStats(list)
+  const labelSummary = labelSummaryFromTrades(list, linksByTrade)
+  const tickerSummary = symbolSummary(list)
   const [note] = await db
     .select()
     .from(periodNotes)
@@ -31,6 +44,9 @@ export default defineEventHandler(async (event) => {
     monthKey,
     periodKey: periodKeyMonth(anchor),
     stats,
+    sideWinRate,
+    labelSummary,
+    tickerSummary,
     trades: list.map(serializeTrade),
     note: note?.content ?? '',
     noteUpdatedAt: note?.updatedAt?.toISOString() ?? null,

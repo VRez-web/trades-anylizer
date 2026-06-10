@@ -12,6 +12,10 @@ import {
 export const labelKindEnum = ['system', 'technique', 'psychology'] as const
 export type LabelKind = (typeof labelKindEnum)[number]
 
+/** live — биржа/основной счёт; test — тестовые сделки; prop — проп (зарезервировано). */
+export const tradeSourceEnum = ['live', 'test', 'prop'] as const
+export type TradeSource = (typeof tradeSourceEnum)[number]
+
 export const labelDefs = pgTable(
   'label_defs',
   {
@@ -64,6 +68,7 @@ export const trades = pgTable(
     noteAnalysisTs: text('note_analysis_ts'),
     mergeGroupId: integer('merge_group_id').references(() => mergeGroups.id, { onDelete: 'set null' }),
     mergedFrom: text('merged_from'),
+    tradeSource: text('trade_source', { enum: tradeSourceEnum }).notNull().default('live'),
     createdAt: timestamp('created_at', { withTimezone: true, mode: 'date' }).notNull(),
     updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'date' }).notNull(),
   },

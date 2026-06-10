@@ -1,6 +1,8 @@
 <script setup lang="ts">
 type LabelItem = { kind: string; label: string }
 
+type TradeSource = 'live' | 'test' | 'prop'
+
 type TradeRow = {
   id: number
   symbol: string
@@ -10,7 +12,17 @@ type TradeRow = {
   net: number
   rr: number | null
   analysisDone: boolean
+  tradeSource?: TradeSource
   labels?: LabelItem[]
+}
+
+type LabelGroupMode = 'full' | 'combo'
+
+const LABEL_KIND_ORDER: Record<string, number> = { system: 0, technique: 1, psychology: 2 }
+const LABEL_KIND_RU: Record<string, string> = {
+  system: 'система',
+  technique: 'техника',
+  psychology: 'психология',
 }
 
 const LIST_FILTERS_KEY = 'trades-analyzer:list-filters'
@@ -24,9 +36,13 @@ const toDate = ref('')
 const rrMin = ref('')
 const rrMax = ref('')
 const labelIds = ref<number[]>([])
+const tradeSource = ref<'all' | TradeSource>('all')
 const sort = ref<'exit_desc' | 'exit_asc'>('exit_desc')
 
 const infoOpen = ref(false)
+const labelGroupMode = ref<LabelGroupMode>('full')
+const hiddenInfoLabelKeys = ref<string[]>([])
+const excludeHiddenFromTotals = ref(true)
 const filtersReady = ref(false)
 
 const { data: allLabels } = await useFetch('/api/labels')
@@ -51,6 +67,7 @@ const query = computed(() => {
   const max = Number(rrMax.value)
   if (rrMax.value !== '' && Number.isFinite(max)) q.rrMax = String(max)
   if (labelIds.value.length) q.labelIds = labelIds.value.join(',')
+  if (tradeSource.value !== 'all') q.tradeSource = tradeSource.value
   return q
 })
 
@@ -63,6 +80,7 @@ type SavedListFilters = {
   rrMin?: string
   rrMax?: string
   labelIds?: number[]
+  tradeSource?: typeof tradeSource.value
   sort?: typeof sort.value
   infoOpen?: boolean
 }
@@ -82,6 +100,9 @@ function loadSavedFilters() {
     if (Array.isArray(j.labelIds)) {
       labelIds.value = j.labelIds.filter((n) => Number.isFinite(n) && n > 0)
     }
+    if (j.tradeSource === 'all' || j.tradeSource === 'live' || j.tradeSource === 'test' || j.tradeSource === 'prop') {
+      tradeSource.value = j.tradeSource
+    }
     if (j.sort === 'exit_desc' || j.sort === 'exit_asc') sort.value = j.sort
     if (j.infoOpen === true) infoOpen.value = true
   } catch {
@@ -100,6 +121,7 @@ function saveFilters() {
     rrMin: rrMin.value,
     rrMax: rrMax.value,
     labelIds: [...labelIds.value],
+    tradeSource: tradeSource.value,
     sort: sort.value,
     infoOpen: infoOpen.value,
   }
@@ -158,6 +180,10 @@ watch(query, () => {
   if (infoOpen.value) refreshInfo()
 })
 
+watch(labelGroupMode, () => {
+  hiddenInfoLabelKeys.value = []
+})
+
 onMounted(() => {
   loadSavedFilters()
   filtersReady.value = true
@@ -166,12 +192,147 @@ onMounted(() => {
 })
 
 watch(
-  [side, result, analysis, fromDate, toDate, rrMin, rrMax, labelIds, sort, infoOpen],
+  [side, result, analysis, fromDate, toDate, rrMin, rrMax, labelIds, tradeSource, sort, infoOpen],
   () => {
     saveFilters()
   },
   { deep: true },
 )
+
+const NO_LABEL_KEY = '— без лейблов'
+
+function labelKeyForItem(lb: LabelItem): string {
+  const kind = LABEL_KIND_RU[lb.kind] ?? lb.kind
+  return `[${kind}] ${lb.label}`
+}
+
+function tradeLabelKeys(t: TradeRow): string[] {
+  if (!t.labels?.length) return [NO_LABEL_KEY]
+  return t.labels.map((lb) => labelKeyForItem(lb))
+}
+
+/** Пары лейблов из разных типов (system / technique / psychology) на одной сделке. */
+function tradeComboKeys(t: TradeRow): string[] {
+  const lbs = t.labels ?? []
+  if (lbs.length < 2) return []
+  const out = new Set<string>()
+  for (let i = 0; i < lbs.length; i++) {
+    for (let j = i + 1; j < lbs.length; j++) {
+      const a = lbs[i]
+      const b = lbs[j]
+      if (a.kind === b.kind) continue
+      const oa = LABEL_KIND_ORDER[a.kind] ?? 99
+      const ob = LABEL_KIND_ORDER[b.kind] ?? 99
+      const [x, y] = oa <= ob ? [a, b] : [b, a]
+      out.add(`${labelKeyForItem(x)} + ${labelKeyForItem(y)}`)
+    }
+  }
+  return [...out]
+}
+
+function tradeInfoGroupKeys(t: TradeRow, mode: LabelGroupMode): string[] {
+  if (mode === 'combo') return tradeComboKeys(t)
+  return tradeLabelKeys(t)
+}
+
+function tradeVisibleForInfoStats(t: TradeRow): boolean {
+  if (!excludeHiddenFromTotals.value || !hiddenInfoLabelKeys.value.length) return true
+  const hidden = new Set(hiddenInfoLabelKeys.value)
+  const keys = tradeInfoGroupKeys(t, labelGroupMode.value)
+  if (!keys.length) return !hidden.has(NO_LABEL_KEY)
+  return keys.some((k) => !hidden.has(k))
+}
+
+function hideInfoLabel(key: string) {
+  if (!hiddenInfoLabelKeys.value.includes(key)) {
+    hiddenInfoLabelKeys.value = [...hiddenInfoLabelKeys.value, key]
+  }
+}
+
+function resetHiddenInfoLabels() {
+  hiddenInfoLabelKeys.value = []
+}
+
+function tradeSourceBadge(source: TradeSource | undefined): string | null {
+  if (source === 'test') return 'тест'
+  if (source === 'prop') return 'проп'
+  return null
+}
+
+function isoLocal(d: Date) {
+  const p = (n: number) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`
+}
+
+const addOpen = ref(false)
+const addSaving = ref(false)
+const addForm = reactive({
+  symbol: '',
+  side: 'long' as 'long' | 'short',
+  entryAt: '',
+  exitAt: '',
+  leverage: 1,
+  entryPrice: 0,
+  exitPrice: 0,
+  income: 0,
+  commission: 0,
+  funding: 0,
+  rr: '' as string | number,
+  isTest: true,
+})
+
+function openAddTrade() {
+  const now = new Date()
+  const hourAgo = new Date(now.getTime() - 3600_000)
+  addForm.symbol = ''
+  addForm.side = 'long'
+  addForm.entryAt = isoLocal(hourAgo)
+  addForm.exitAt = isoLocal(now)
+  addForm.leverage = 1
+  addForm.entryPrice = 0
+  addForm.exitPrice = 0
+  addForm.income = 0
+  addForm.commission = 0
+  addForm.funding = 0
+  addForm.rr = ''
+  addForm.isTest = true
+  addOpen.value = true
+}
+
+async function submitAddTrade() {
+  addSaving.value = true
+  try {
+    const row = await $fetch<{ id: number }>('/api/trades', {
+      method: 'POST',
+      body: {
+        symbol: addForm.symbol,
+        side: addForm.side,
+        entryAt: new Date(addForm.entryAt).toISOString(),
+        exitAt: new Date(addForm.exitAt).toISOString(),
+        leverage: addForm.leverage,
+        entryPrice: addForm.entryPrice,
+        exitPrice: addForm.exitPrice,
+        income: addForm.income,
+        commission: addForm.commission,
+        funding: addForm.funding,
+        rr: addForm.rr === '' ? null : Number(addForm.rr),
+        tradeSource: addForm.isTest ? 'test' : 'live',
+      },
+    })
+    addOpen.value = false
+    await refresh()
+    if (infoOpen.value) await refreshInfo()
+    await navigateTo(`/trades/${row.id}`)
+  } catch (e: unknown) {
+    const msg =
+      e && typeof e === 'object' && 'data' in e
+        ? String((e as { data?: { statusMessage?: string } }).data?.statusMessage ?? '')
+        : ''
+    alert(msg || 'Не удалось добавить сделку')
+  } finally {
+    addSaving.value = false
+  }
+}
 
 const { fmtUsdt } = useMoney()
 
@@ -185,14 +346,16 @@ function goTrade(id: number) {
 
 const infoTrades = computed(() => infoPack.value?.trades ?? [])
 
+const infoTradesForStats = computed(() => infoTrades.value.filter(tradeVisibleForInfoStats))
+
 const infoSummary = computed(() => {
-  const rows = infoTrades.value
+  const rows = infoTradesForStats.value
   const sum = rows.reduce((s, t) => s + t.net, 0)
   return { count: rows.length, sum }
 })
 
 const avgRr = computed(() => {
-  const rows = infoTrades.value.filter((t) => Number.isFinite(t.rr))
+  const rows = infoTradesForStats.value.filter((t) => Number.isFinite(t.rr))
   if (!rows.length) return null
   const sum = rows.reduce((s, t) => s + (t.rr ?? 0), 0)
   return { value: sum / rows.length, count: rows.length }
@@ -212,7 +375,7 @@ const dayJournalInfo = computed(() => {
 
 const bySymbol = computed(() => {
   const m = new Map<string, { net: number; count: number }>()
-  for (const t of infoTrades.value) {
+  for (const t of infoTradesForStats.value) {
     const cur = m.get(t.symbol) ?? { net: 0, count: 0 }
     cur.net += t.net
     cur.count += 1
@@ -223,10 +386,25 @@ const bySymbol = computed(() => {
 
 const byLabel = computed(() => {
   const m = new Map<string, { net: number; count: number }>()
-  for (const t of infoTrades.value) {
+  const hidden = new Set(hiddenInfoLabelKeys.value)
+  const mode = labelGroupMode.value
+  for (const t of infoTradesForStats.value) {
+    if (mode === 'combo') {
+      const combos = tradeComboKeys(t)
+      if (!combos.length) continue
+      for (const key of combos) {
+        if (hidden.has(key)) continue
+        const cur = m.get(key) ?? { net: 0, count: 0 }
+        cur.net += t.net
+        cur.count += 1
+        m.set(key, cur)
+      }
+      continue
+    }
     const lbs = t.labels?.length ? t.labels : null
     if (!lbs) {
-      const key = '— без лейблов'
+      const key = NO_LABEL_KEY
+      if (hidden.has(key)) continue
       const cur = m.get(key) ?? { net: 0, count: 0 }
       cur.net += t.net
       cur.count += 1
@@ -234,7 +412,8 @@ const byLabel = computed(() => {
       continue
     }
     for (const lb of lbs) {
-      const key = `[${lb.kind}] ${lb.label}`
+      const key = labelKeyForItem(lb)
+      if (hidden.has(key)) continue
       const cur = m.get(key) ?? { net: 0, count: 0 }
       cur.net += t.net
       cur.count += 1
@@ -246,7 +425,7 @@ const byLabel = computed(() => {
 
 const byEntryHour = computed(() => {
   const m = new Map<number, { net: number; count: number }>()
-  for (const t of infoTrades.value) {
+  for (const t of infoTradesForStats.value) {
     const h = new Date(t.entryAt).getHours()
     const cur = m.get(h) ?? { net: 0, count: 0 }
     cur.net += t.net
@@ -259,7 +438,7 @@ const byEntryHour = computed(() => {
 /** При фильтре «Результат: все» — общий винрейт и по long/short (win = положительный net). */
 const winRateBySide = computed(() => {
   if (result.value !== 'all') return null
-  const rows = infoTrades.value
+  const rows = infoTradesForStats.value
   const wins = rows.filter((t) => t.net > 0).length
   const n = rows.length
   const longs = rows.filter((t) => t.side === 'long')
@@ -302,6 +481,7 @@ function fmtRr(v: number | null) {
     <div class="head-row">
       <NuxtLink to="/trades" class="btn">← Календарь</NuxtLink>
       <h1 class="title">Все сделки</h1>
+      <button type="button" class="btn btn-primary" @click="openAddTrade">+ Добавить сделку</button>
     </div>
 
     <div class="card filters">
@@ -328,6 +508,15 @@ function fmtRr(v: number | null) {
             <option value="all">Все</option>
             <option value="with">Есть</option>
             <option value="without">Нет</option>
+          </select>
+        </label>
+        <label class="fl">
+          <span class="fl-l">Источник</span>
+          <select v-model="tradeSource" class="input">
+            <option value="all">Все</option>
+            <option value="live">Live</option>
+            <option value="test">Тест</option>
+            <option value="prop">Проп</option>
           </select>
         </label>
         <label class="fl">
@@ -407,6 +596,10 @@ function fmtRr(v: number | null) {
           , средний RR:
           <strong>{{ fmtRr(avgRr?.value ?? null) }}</strong>
           <span class="muted"> (по {{ avgRr?.count ?? 0 }} сделк{{ (avgRr?.count ?? 0) === 1 ? 'е' : 'ам' }})</span>
+          <span v-if="hiddenInfoLabelKeys.length" class="muted">
+            · скрыто лейблов: {{ hiddenInfoLabelKeys.length }}
+            <button type="button" class="btn btn-tiny" @click="resetHiddenInfoLabels">Показать все</button>
+          </span>
           <span class="muted">(группировки ниже по этому же набору)</span>
         </p>
 
@@ -489,14 +682,44 @@ function fmtRr(v: number | null) {
         </div>
 
         <h3 class="info-h">По лейблам</h3>
+        <div class="info-label-toolbar">
+          <label class="info-label-mode">
+            <span class="fl-l">Группировка</span>
+            <select v-model="labelGroupMode" class="input input-compact">
+              <option value="full">По одному лейблу</option>
+              <option value="combo">Пары из разных типов</option>
+            </select>
+          </label>
+          <label class="info-label-mode info-label-check">
+            <input v-model="excludeHiddenFromTotals" type="checkbox" />
+            <span>Исключать сделки со скрытыми лейблами из итогов</span>
+          </label>
+        </div>
         <p class="muted info-note">
-          Сделка с несколькими лейблами учитывается в каждой группе; «без лейблов» — без привязки к лейблу.
+          <template v-if="labelGroupMode === 'full'">
+            Сделка с несколькими лейблами учитывается в каждой группе; «без лейблов» — без привязки к лейблу.
+          </template>
+          <template v-else>
+            Показываются пары лейблов с разных типов (система / техника / психология) на одной сделке —
+            например «[technique] по тс + [psychology] нарратив не отработал». Сделка с 3+ лейблами даёт несколько пар.
+          </template>
+          Нажмите × на плитке, чтобы скрыть группу и пересчитать статистику.
         </p>
-        <div class="info-grid">
-          <div v-for="[lb, agg] in byLabel" :key="lb" class="info-tile info-tile--wide">
+        <div v-if="!byLabel.length" class="muted info-note">Нет лейблов для отображения</div>
+        <div v-else class="info-grid">
+          <div v-for="[lb, agg] in byLabel" :key="lb" class="info-tile info-tile--wide info-tile--label">
+            <button
+              type="button"
+              class="info-tile-hide"
+              title="Скрыть лейбл"
+              aria-label="Скрыть лейбл"
+              @click="hideInfoLabel(lb)"
+            >
+              ×
+            </button>
             <div class="info-tile__lbl">{{ lb }}</div>
             <div class="info-tile__meta">
-              <span>{{ agg.count }} упом.</span>
+              <span>{{ agg.count }} {{ labelGroupMode === 'combo' ? 'сдел.' : 'упом.' }}</span>
               <strong :class="agg.net >= 0 ? 'pos' : 'neg'">{{ fmtUsdt(agg.net) }}</strong>
             </div>
           </div>
@@ -524,6 +747,7 @@ function fmtRr(v: number | null) {
           <tr>
             <th class="col-time">Выход</th>
             <th class="col-sym">Тикер</th>
+            <th class="col-src">Тип</th>
             <th class="col-side">Сторона</th>
             <th class="col-net">Чистый</th>
             <th class="col-rr">RR</th>
@@ -542,6 +766,10 @@ function fmtRr(v: number | null) {
           >
             <td class="t-exit">{{ fmtExit(t.exitAt) }}</td>
             <td class="sym">{{ t.symbol }}</td>
+            <td>
+              <span v-if="tradeSourceBadge(t.tradeSource)" class="src-badge">{{ tradeSourceBadge(t.tradeSource) }}</span>
+              <span v-else class="muted">—</span>
+            </td>
             <td>{{ t.side }}</td>
             <td :class="t.net >= 0 ? 'pos' : 'neg'">{{ fmtUsdt(t.net) }}</td>
             <td>{{ t.rr == null ? '—' : t.rr.toFixed(2) }}</td>
@@ -553,6 +781,72 @@ function fmtRr(v: number | null) {
           </tr>
         </tbody>
       </table>
+    </div>
+
+    <div v-if="addOpen" class="modal-backdrop" @click.self="addOpen = false">
+      <div class="modal card">
+        <h2 class="modal-title">Новая сделка</h2>
+        <p class="muted modal-lead">Ручной ввод — для тестовых сделок отметьте «Тестовая».</p>
+        <div class="modal-grid">
+          <label class="fl">
+            <span class="fl-l">Тикер</span>
+            <input v-model="addForm.symbol" class="input" placeholder="BTCUSDT" />
+          </label>
+          <label class="fl">
+            <span class="fl-l">Сторона</span>
+            <select v-model="addForm.side" class="input">
+              <option value="long">Long</option>
+              <option value="short">Short</option>
+            </select>
+          </label>
+          <label class="fl">
+            <span class="fl-l">Вход</span>
+            <input v-model="addForm.entryAt" class="input" type="datetime-local" step="1" />
+          </label>
+          <label class="fl">
+            <span class="fl-l">Выход</span>
+            <input v-model="addForm.exitAt" class="input" type="datetime-local" step="1" />
+          </label>
+          <label class="fl">
+            <span class="fl-l">Плечо</span>
+            <input v-model.number="addForm.leverage" class="input" type="number" step="0.1" />
+          </label>
+          <label class="fl">
+            <span class="fl-l">Цена входа</span>
+            <input v-model.number="addForm.entryPrice" class="input" type="number" step="any" />
+          </label>
+          <label class="fl">
+            <span class="fl-l">Цена выхода</span>
+            <input v-model.number="addForm.exitPrice" class="input" type="number" step="any" />
+          </label>
+          <label class="fl">
+            <span class="fl-l">Доход</span>
+            <input v-model.number="addForm.income" class="input" type="number" step="any" />
+          </label>
+          <label class="fl">
+            <span class="fl-l">Комиссия</span>
+            <input v-model.number="addForm.commission" class="input" type="number" step="any" />
+          </label>
+          <label class="fl">
+            <span class="fl-l">Фандинг</span>
+            <input v-model.number="addForm.funding" class="input" type="number" step="any" />
+          </label>
+          <label class="fl">
+            <span class="fl-l">RR</span>
+            <input v-model="addForm.rr" class="input" type="number" step="0.1" />
+          </label>
+          <label class="fl fl-check">
+            <input v-model="addForm.isTest" type="checkbox" />
+            <span>Тестовая сделка</span>
+          </label>
+        </div>
+        <div class="modal-actions">
+          <button type="button" class="btn" :disabled="addSaving" @click="addOpen = false">Отмена</button>
+          <button type="button" class="btn btn-primary" :disabled="addSaving" @click="submitAddTrade">
+            {{ addSaving ? 'Сохранение…' : 'Создать' }}
+          </button>
+        </div>
+      </div>
     </div>
   </div>
 </template>
@@ -691,6 +985,103 @@ function fmtRr(v: number | null) {
 .sym {
   font-weight: 600;
   color: var(--accent);
+}
+.src-badge {
+  display: inline-block;
+  font-size: 0.68rem;
+  font-weight: 600;
+  padding: 1px 5px;
+  border-radius: 4px;
+  color: #92400e;
+  background: rgba(245, 158, 11, 0.15);
+  border: 1px solid rgba(245, 158, 11, 0.35);
+}
+.info-label-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.65rem 1rem;
+  align-items: flex-end;
+  margin-bottom: 0.35rem;
+}
+.info-label-mode {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  font-size: 0.78rem;
+}
+.info-label-check {
+  flex-direction: row;
+  align-items: center;
+  gap: 0.4rem;
+  padding-bottom: 0.15rem;
+}
+.input-compact {
+  min-width: 11rem;
+  font-size: 0.8125rem;
+}
+.info-tile--label {
+  position: relative;
+  padding-top: 1.35rem;
+}
+.info-tile-hide {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 1.25rem;
+  height: 1.25rem;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--surface);
+  color: var(--muted);
+  font-size: 0.9rem;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0;
+}
+.info-tile-hide:hover {
+  color: #b91c1c;
+  border-color: rgba(185, 28, 28, 0.4);
+}
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  background: rgba(0, 0, 0, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+}
+.modal {
+  width: min(640px, 100%);
+  max-height: 90vh;
+  overflow: auto;
+  padding: 1rem 1.1rem;
+}
+.modal-title {
+  margin: 0 0 0.35rem;
+  font-size: 1.05rem;
+}
+.modal-lead {
+  margin: 0 0 0.75rem;
+  font-size: 0.8125rem;
+}
+.modal-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(148px, 1fr));
+  gap: 0.65rem 1rem;
+}
+.fl-check {
+  flex-direction: row;
+  align-items: center;
+  gap: 0.4rem;
+  grid-column: 1 / -1;
+}
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  margin-top: 1rem;
 }
 .an {
   font-size: 0.8125rem;

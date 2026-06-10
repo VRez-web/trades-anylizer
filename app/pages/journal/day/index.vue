@@ -155,6 +155,9 @@ async function saveNote() {
             />
             <ul class="journal-day__trade-sum">
               <li v-for="(t, i) in tradesForChart" :key="t.id">
+                <span class="side-badge" :class="t.side === 'long' ? 'side-badge--long' : 'side-badge--short'">
+                  {{ t.side === 'long' ? 'L' : 'S' }}
+                </span>
                 Сделка {{ i + 1 }}:
                 {{ fmtInstrumentPrice(t.entryPrice) }} → {{ fmtInstrumentPrice(t.exitPrice) }} · чистый
                 <span :class="t.net >= 0 ? 'pos' : 'neg'">{{ fmtSignedUsdt(t.net, 2) }}</span>
@@ -294,6 +297,29 @@ async function saveNote() {
 }
 .journal-day__trade-sum li {
   margin: 0.2rem 0;
+}
+.side-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.15rem;
+  height: 1.15rem;
+  margin-right: 0.35rem;
+  border-radius: 4px;
+  font-size: 0.65rem;
+  font-weight: 700;
+  line-height: 1;
+  vertical-align: middle;
+}
+.side-badge--long {
+  color: #166534;
+  background: rgba(22, 101, 52, 0.12);
+  border: 1px solid rgba(22, 101, 52, 0.35);
+}
+.side-badge--short {
+  color: #b91c1c;
+  background: rgba(185, 28, 28, 0.1);
+  border: 1px solid rgba(185, 28, 28, 0.35);
 }
 .trade-link {
   margin-left: 0.55rem;

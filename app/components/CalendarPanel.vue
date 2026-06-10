@@ -126,6 +126,10 @@ const monthAnalysisBadge = computed(() => {
     : { text: 'Анализ месяца: нет', kind: 'off' as const }
 })
 
+const monthJournalUrl = computed(
+  () => `/journal/month?year=${props.year}&month=${props.month}`,
+)
+
 const weekAnalysisProgress = computed(() => {
   const byKey = props.journalWeekAnalysisByKey ?? {}
   const set = new Set<string>()
@@ -167,6 +171,14 @@ function next() {
       <button type="button" class="btn cal-nav-btn" aria-label="Предыдущий месяц" @click="prev">←</button>
       <div class="title-wrap">
         <h2 class="title">
+          <NuxtLink
+            :to="monthJournalUrl"
+            class="month-side-badge"
+            :class="journalMonthAnalysis ? 'month-side-badge--on' : 'month-side-badge--off'"
+            title="Журнал месяца"
+          >
+            М
+          </NuxtLink>
           <span class="title-month">{{ label }}</span>
           <span
             class="title-net"
@@ -182,9 +194,13 @@ function next() {
       <button type="button" class="btn cal-nav-btn" aria-label="Следующий месяц" @click="next">→</button>
     </div>
     <div class="period-badges">
-      <span class="period-badge" :class="`period-badge--${monthAnalysisBadge.kind}`">
+      <NuxtLink
+        :to="monthJournalUrl"
+        class="period-badge period-badge--link"
+        :class="`period-badge--${monthAnalysisBadge.kind}`"
+      >
         {{ monthAnalysisBadge.text }}
-      </span>
+      </NuxtLink>
       <span class="period-badge" :class="`period-badge--${weekAnalysisProgress.kind}`">
         {{ weekAnalysisProgress.text }}
       </span>
@@ -228,7 +244,7 @@ function next() {
       </div>
     </div>
     <p class="cal-legend muted">
-      П — план, А — анализ, П+А — оба заполнены, Н — есть анализ недели
+      П — план, А — анализ, П+А — оба заполнены, Н — анализ недели, М — анализ месяца (клик — журнал)
     </p>
   </div>
 </template>
@@ -327,6 +343,36 @@ function next() {
   background: rgba(22, 101, 52, 0.1);
 }
 .period-badge--off {
+  color: var(--muted);
+  background: var(--surface);
+}
+.period-badge--link {
+  text-decoration: none;
+  cursor: pointer;
+}
+.period-badge--link:hover {
+  filter: brightness(0.97);
+}
+.month-side-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.35rem;
+  height: 1.35rem;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  font-size: 0.68rem;
+  font-weight: 700;
+  line-height: 1;
+  text-decoration: none;
+  flex-shrink: 0;
+}
+.month-side-badge--on {
+  color: #166534;
+  border-color: rgba(22, 101, 52, 0.4);
+  background: rgba(22, 101, 52, 0.14);
+}
+.month-side-badge--off {
   color: var(--muted);
   background: var(--surface);
 }

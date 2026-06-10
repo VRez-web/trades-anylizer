@@ -108,6 +108,7 @@ const form = reactive({
     technique: [] as number[],
     psychology: [] as number[],
   },
+  tradeSource: 'live' as 'live' | 'test' | 'prop',
 })
 
 function snapshotLabelIds(): string {
@@ -158,6 +159,7 @@ watch(
     form.commission = t.commission
     form.funding = t.funding
     form.rr = t.rr ?? ''
+    form.tradeSource = t.tradeSource === 'test' || t.tradeSource === 'prop' ? t.tradeSource : 'live'
     form.noteGeneral = mergeGeneralFromTrade(t)
     form.noteSystemTs = t.noteSystemTs ?? ''
     form.noteTechniqueTs = t.noteTechniqueTs ?? ''
@@ -294,6 +296,7 @@ async function save() {
           noteSystemTs: form.noteSystemTs,
           noteTechniqueTs: form.noteTechniqueTs,
           noteAnalysisTs: form.noteAnalysisTs,
+          tradeSource: form.tradeSource,
           labelIds,
         },
       })
@@ -318,6 +321,7 @@ async function save() {
           noteSystemTs: form.noteSystemTs,
           noteTechniqueTs: form.noteTechniqueTs,
           noteAnalysisTs: form.noteAnalysisTs,
+          tradeSource: form.tradeSource,
           labelIds,
         },
       })
@@ -335,6 +339,12 @@ async function save() {
       <NuxtLink :to="`/trades/day/${localDayKeyFromIso(data.trade.exitAt)}`" class="btn">← День</NuxtLink>
       <button type="button" class="btn" @click="openDayPlanModal">План дня</button>
       <h1 class="trade-title">{{ data.trade.symbol }}</h1>
+      <span
+        v-if="data.trade.tradeSource === 'test' || data.trade.tradeSource === 'prop'"
+        class="trade-src-badge"
+      >
+        {{ data.trade.tradeSource === 'test' ? 'тест' : 'проп' }}
+      </span>
     </div>
 
     <section class="card trade-summary">
@@ -462,6 +472,14 @@ async function save() {
             <label class="meta-rr-label">
               <span class="meta-lbl">RR</span>
               <input v-model="form.rr" class="input input-tight" type="number" step="0.01" placeholder="—" />
+            </label>
+            <label class="meta-rr-label">
+              <span class="meta-lbl">Источник</span>
+              <select v-model="form.tradeSource" class="input input-tight">
+                <option value="live">Live</option>
+                <option value="test">Тест</option>
+                <option value="prop">Проп</option>
+              </select>
             </label>
             <span class="muted meta-rr-hint">можно взять с графика (блок «Расчёт RR»)</span>
           </div>
@@ -673,6 +691,15 @@ async function save() {
 .trade-title {
   margin: 0;
   font-size: 1.2rem;
+}
+.trade-src-badge {
+  font-size: 0.72rem;
+  font-weight: 600;
+  padding: 2px 7px;
+  border-radius: 999px;
+  color: #92400e;
+  background: rgba(245, 158, 11, 0.15);
+  border: 1px solid rgba(245, 158, 11, 0.35);
 }
 .trade-summary {
   margin-bottom: 0.85rem;
