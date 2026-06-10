@@ -12,7 +12,7 @@ import {
   bybitBaseUrl,
   BybitGeoBlockedError,
 } from '../../utils/bybitCredentials'
-import { cleanupAllMergedOrphans, ensureMergedTradeGuards } from '../../utils/mergedTradeSync'
+import { runMergedTradeSyncGuards } from '../../utils/mergedTradeSync'
 
 type TradeInsert = InferInsertModel<typeof trades>
 
@@ -105,8 +105,12 @@ export default defineEventHandler(async (event) => {
     })) as Record<string, string>[]
     const db = useDb()
     const now = new Date()
-    const removedOrphansBefore = await cleanupAllMergedOrphans(db)
-    const { suppressed, backfilled } = await ensureMergedTradeGuards(db, list, category)
+    const {
+      suppressed,
+      backfilled,
+      removedOrphans: removedOrphansTotal,
+      guardsFailed,
+    } = await runMergedTradeSyncGuards(db, list, category)
     let inserted = 0
     let updated = 0
     let skippedMerged = 0
@@ -152,11 +156,17 @@ export default defineEventHandler(async (event) => {
         inserted++
       }
     }
-    const removedOrphansAfter = await cleanupAllMergedOrphans(db)
-    const hint =
-      list.length === 0
-        ? 'За выбранный период закрытый PnL по linear/inverse пустой. Частые причины: торгуете только спотом (этот импорт — деривативы), нет закрытых позиций за период, неверный mainnet/testnet. Попробуйте увеличить days (например 365) или category=inverse.'
-        : undefined
+    const hintParts: string[] = []
+    if (list.length === 0) {
+      hintParts.push(
+        'За выбранный период закрытый PnL по linear/inverse пустой. Частые причины: торгуете только спотом (этот импорт — деривативы), нет закрытых позиций за период, неверный mainnet/testnet. Попробуйте увеличить days (например 365) или category=inverse.',
+      )
+    }
+    if (guardsFailed) {
+      hintParts.push(
+        'Защита объединённых сделок не сработала (проверьте колонку merged_from в Supabase). Синк сделок выполнен.',
+      )
+    }
     return {
       ok: true,
       category,
@@ -167,9 +177,10 @@ export default defineEventHandler(async (event) => {
       updated,
       skippedMerged,
       removedDuplicates,
-      removedOrphans: removedOrphansBefore + removedOrphansAfter,
+      removedOrphans: removedOrphansTotal,
       backfilledMergedKeys: backfilled,
-      hint,
+      mergeGuardsFailed: guardsFailed,
+      hint: hintParts.length ? hintParts.join(' ') : undefined,
     }
   } catch (e) {
     if (e && typeof e === 'object' && 'statusCode' in e) throw e

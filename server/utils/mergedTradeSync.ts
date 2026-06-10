@@ -1,4 +1,4 @@
-import { and, eq, isNotNull, isNull, sql } from 'drizzle-orm'
+import { and, eq, isNotNull, isNull, like, or } from 'drizzle-orm'
 import { trades } from '../database/schema'
 import type { AppDatabase } from '../types/app-database'
 import type { TradeRow } from './tradeMath'
@@ -148,8 +148,30 @@ export function filterTradesExcludingMergedOrphans(
   })
 }
 
+function isMissingMergedFromColumn(e: unknown): boolean {
+  const msg = String(e ?? '')
+  const code = (e as { code?: string })?.code
+  return (
+    code === '42703' ||
+    /column .*merged_from.* does not exist/i.test(msg) ||
+    /merged_from/i.test(msg) && /does not exist/i.test(msg)
+  )
+}
+
+/** Объединённые сделки: merged_from IS NOT NULL или external_key merged:… */
 export async function loadMergedParentTrades(db: AppDatabase): Promise<TradeRow[]> {
-  return db.select().from(trades).where(isNotNull(trades.mergedFrom))
+  try {
+    return await db
+      .select()
+      .from(trades)
+      .where(or(isNotNull(trades.mergedFrom), like(trades.externalKey, 'merged:%')))
+  } catch (e) {
+    if (isMissingMergedFromColumn(e)) {
+      console.warn('[mergedTradeSync] column merged_from missing, fallback to external_key merged:%')
+      return db.select().from(trades).where(like(trades.externalKey, 'merged:%'))
+    }
+    throw e
+  }
 }
 
 /** Удалить из БД повторно импортированные ноги объединённых сделок. */
@@ -157,10 +179,17 @@ export async function cleanupAllMergedOrphans(db: AppDatabase): Promise<number> 
   const mergedParents = await loadMergedParentTrades(db)
   if (!mergedParents.length) return 0
 
-  const candidates = await db
-    .select()
-    .from(trades)
-    .where(and(isNull(trades.mergedFrom), sql`${trades.externalKey} like 'bybit:%'`))
+  const orphanCond = and(like(trades.externalKey, 'bybit:%'), isNull(trades.mergedFrom))
+  let candidates: TradeRow[]
+  try {
+    candidates = await db.select().from(trades).where(orphanCond)
+  } catch (e) {
+    if (isMissingMergedFromColumn(e)) {
+      candidates = await db.select().from(trades).where(like(trades.externalKey, 'bybit:%'))
+    } else {
+      throw e
+    }
+  }
 
   let removed = 0
   for (const t of candidates) {
@@ -191,10 +220,7 @@ export async function ensureMergedTradeGuards(
   bybitList: Record<string, string>[],
   category: string,
 ): Promise<MergeGuardResult> {
-  const mergedRows = await db
-    .select()
-    .from(trades)
-    .where(isNotNull(trades.mergedFrom))
+  const mergedRows = await loadMergedParentTrades(db)
 
   const suppressed = new Set<string>()
   let backfilled = 0
@@ -229,6 +255,43 @@ export async function selectTradesExcludingMergedOrphans(
   db: AppDatabase,
   rows: TradeRow[],
 ): Promise<TradeRow[]> {
-  const mergedParents = await loadMergedParentTrades(db)
-  return filterTradesExcludingMergedOrphans(rows, mergedParents)
+  try {
+    const mergedParents = await loadMergedParentTrades(db)
+    return filterTradesExcludingMergedOrphans(rows, mergedParents)
+  } catch (e) {
+    console.error('[mergedTradeSync] orphan filter skipped', e)
+    return rows
+  }
+}
+
+/** Синк Bybit: не ронять запрос, если защита merge недоступна. */
+export async function runMergedTradeSyncGuards(
+  db: AppDatabase,
+  bybitList: Record<string, string>[],
+  category: string,
+): Promise<{
+  suppressed: Set<string>
+  backfilled: number
+  removedOrphans: number
+  guardsFailed: boolean
+}> {
+  try {
+    const removedOrphans = await cleanupAllMergedOrphans(db)
+    const { suppressed, backfilled } = await ensureMergedTradeGuards(db, bybitList, category)
+    const removedAfter = await cleanupAllMergedOrphans(db)
+    return {
+      suppressed,
+      backfilled,
+      removedOrphans: removedOrphans + removedAfter,
+      guardsFailed: false,
+    }
+  } catch (e) {
+    console.error('[mergedTradeSync] sync guards failed', e)
+    return {
+      suppressed: new Set<string>(),
+      backfilled: 0,
+      removedOrphans: 0,
+      guardsFailed: true,
+    }
+  }
 }
