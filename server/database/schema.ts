@@ -69,6 +69,7 @@ export const trades = pgTable(
     mergeGroupId: integer('merge_group_id').references(() => mergeGroups.id, { onDelete: 'set null' }),
     mergedFrom: text('merged_from'),
     tradeSource: text('trade_source', { enum: tradeSourceEnum }).notNull().default('live'),
+    accountName: text('account_name'),
     createdAt: timestamp('created_at', { withTimezone: true, mode: 'date' }).notNull(),
     updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'date' }).notNull(),
   },

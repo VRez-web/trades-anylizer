@@ -18,6 +18,13 @@ function parseBody(body: Record<string, unknown>) {
     const n = Number(v)
     return Number.isFinite(n) ? n : def
   }
+  const numOrNull = (v: unknown) => {
+    if (v == null || v === '') return null
+    const n = Number(v)
+    return Number.isFinite(n) ? n : null
+  }
+  const tradeSource = parseTradeSource(body.tradeSource)
+  const accountName = String(body.accountName ?? '').trim()
   const now = new Date()
   return {
     symbol,
@@ -32,6 +39,7 @@ function parseBody(body: Record<string, unknown>) {
     income: num(body.income),
     commission: num(body.commission),
     funding: num(body.funding),
+    entryNotionalUsdt: numOrNull(body.entryNotionalUsdt),
     rr: body.rr != null && body.rr !== '' ? num(body.rr) : null,
     noteSystem: body.noteSystem != null ? String(body.noteSystem) : null,
     noteTechnique: body.noteTechnique != null ? String(body.noteTechnique) : null,
@@ -39,7 +47,8 @@ function parseBody(body: Record<string, unknown>) {
     noteSystemTs: body.noteSystemTs != null ? String(body.noteSystemTs) : null,
     noteTechniqueTs: body.noteTechniqueTs != null ? String(body.noteTechniqueTs) : null,
     noteAnalysisTs: body.noteAnalysisTs != null ? String(body.noteAnalysisTs) : null,
-    tradeSource: parseTradeSource(body.tradeSource),
+    tradeSource,
+    accountName: tradeSource === 'prop' && accountName ? accountName : null,
     createdAt: now,
     updatedAt: now,
   }

@@ -13,6 +13,8 @@ type TradeRow = {
   rr: number | null
   analysisDone: boolean
   tradeSource?: TradeSource
+  accountName?: string | null
+  quoteVolumeUsdt?: number | null
   labels?: LabelItem[]
 }
 
@@ -277,8 +279,10 @@ const addForm = reactive({
   income: 0,
   commission: 0,
   funding: 0,
+  entryNotionalUsdt: '' as string | number,
   rr: '' as string | number,
-  isTest: true,
+  tradeSource: 'test' as TradeSource,
+  accountName: '',
 })
 
 function openAddTrade() {
@@ -294,8 +298,10 @@ function openAddTrade() {
   addForm.income = 0
   addForm.commission = 0
   addForm.funding = 0
+  addForm.entryNotionalUsdt = ''
   addForm.rr = ''
-  addForm.isTest = true
+  addForm.tradeSource = 'test'
+  addForm.accountName = ''
   addOpen.value = true
 }
 
@@ -315,8 +321,10 @@ async function submitAddTrade() {
         income: addForm.income,
         commission: addForm.commission,
         funding: addForm.funding,
+        entryNotionalUsdt: addForm.entryNotionalUsdt === '' ? null : Number(addForm.entryNotionalUsdt),
         rr: addForm.rr === '' ? null : Number(addForm.rr),
-        tradeSource: addForm.isTest ? 'test' : 'live',
+        tradeSource: addForm.tradeSource,
+        accountName: addForm.tradeSource === 'prop' ? addForm.accountName : null,
       },
     })
     addOpen.value = false
@@ -767,7 +775,10 @@ function fmtRr(v: number | null) {
             <td class="t-exit">{{ fmtExit(t.exitAt) }}</td>
             <td class="sym">{{ t.symbol }}</td>
             <td>
-              <span v-if="tradeSourceBadge(t.tradeSource)" class="src-badge">{{ tradeSourceBadge(t.tradeSource) }}</span>
+              <template v-if="tradeSourceBadge(t.tradeSource)">
+                <span class="src-badge">{{ tradeSourceBadge(t.tradeSource) }}</span>
+                <span v-if="t.tradeSource === 'prop' && t.accountName" class="src-account">{{ t.accountName }}</span>
+              </template>
               <span v-else class="muted">—</span>
             </td>
             <td>{{ t.side }}</td>
@@ -786,11 +797,23 @@ function fmtRr(v: number | null) {
     <div v-if="addOpen" class="modal-backdrop" @click.self="addOpen = false">
       <div class="modal card">
         <h2 class="modal-title">Новая сделка</h2>
-        <p class="muted modal-lead">Ручной ввод — для тестовых сделок отметьте «Тестовая».</p>
+        <p class="muted modal-lead">Ручной ввод — выберите источник сделки и укажите объём, если он известен.</p>
         <div class="modal-grid">
           <label class="fl">
             <span class="fl-l">Тикер</span>
             <input v-model="addForm.symbol" class="input" placeholder="BTCUSDT" />
+          </label>
+          <label class="fl">
+            <span class="fl-l">Источник</span>
+            <select v-model="addForm.tradeSource" class="input">
+              <option value="live">Live</option>
+              <option value="test">Тест</option>
+              <option value="prop">Проп</option>
+            </select>
+          </label>
+          <label v-if="addForm.tradeSource === 'prop'" class="fl">
+            <span class="fl-l">Аккаунт пропа</span>
+            <input v-model="addForm.accountName" class="input" placeholder="FTMO 100k" />
           </label>
           <label class="fl">
             <span class="fl-l">Сторона</span>
@@ -832,12 +855,12 @@ function fmtRr(v: number | null) {
             <input v-model.number="addForm.funding" class="input" type="number" step="any" />
           </label>
           <label class="fl">
+            <span class="fl-l">Объём, USDT</span>
+            <input v-model="addForm.entryNotionalUsdt" class="input" type="number" step="any" placeholder="опционально" />
+          </label>
+          <label class="fl">
             <span class="fl-l">RR</span>
             <input v-model="addForm.rr" class="input" type="number" step="0.1" />
-          </label>
-          <label class="fl fl-check">
-            <input v-model="addForm.isTest" type="checkbox" />
-            <span>Тестовая сделка</span>
           </label>
         </div>
         <div class="modal-actions">
@@ -995,6 +1018,16 @@ function fmtRr(v: number | null) {
   color: #92400e;
   background: rgba(245, 158, 11, 0.15);
   border: 1px solid rgba(245, 158, 11, 0.35);
+}
+.src-account {
+  display: block;
+  margin-top: 2px;
+  max-width: 9rem;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 0.68rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .info-label-toolbar {
   display: flex;

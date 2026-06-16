@@ -42,6 +42,10 @@ async function openDayPlanModal() {
 const quoteVolPreview = computed(() => {
   const t = data.value?.trade
   if (!t) return null
+  if (form.entryNotionalUsdt !== '') {
+    const n = Number(form.entryNotionalUsdt)
+    if (Number.isFinite(n) && n > 0) return n
+  }
   if (t.externalKey) return t.quoteVolumeUsdt ?? null
   return estimateQuoteVolumeUsdt(form.side, form.entryPrice, form.exitPrice, form.income)
 })
@@ -63,6 +67,16 @@ const priceMoveNonNegative = computed(() => {
   return r >= 0
 })
 
+const tradeSourceHeaderLabel = computed(() => {
+  const t = data.value?.trade
+  if (!t) return ''
+  if (t.tradeSource === 'test') return 'тест'
+  if (t.tradeSource === 'prop') {
+    return t.accountName ? `проп · ${t.accountName}` : 'проп'
+  }
+  return ''
+})
+
 /** Ноги для графика (после merge в БД хранятся в merged_from.legs). */
 const mergeLegsForChart = computed(() => {
   const legs = data.value?.trade?.mergedFrom?.legs
@@ -73,6 +87,11 @@ const mergeLegsForChart = computed(() => {
     entryPrice: l.entryPrice,
     exitPrice: l.exitPrice,
   }))
+})
+
+const mergedSourceIdsLabel = computed(() => {
+  const ids = data.value?.trade?.mergedFrom?.sourceIds
+  return ids?.length ? ids.map((id: number) => `#${id}`).join(', ') : ''
 })
 
 function mergeGeneralFromTrade(t: {
@@ -97,6 +116,7 @@ const form = reactive({
   income: 0,
   commission: 0,
   funding: 0,
+  entryNotionalUsdt: '' as string | number,
   rr: '' as string | number,
   /** Один общий анализ → в API кладётся в note_system, остальные general-поля очищаются. */
   noteGeneral: '',
@@ -109,6 +129,7 @@ const form = reactive({
     psychology: [] as number[],
   },
   tradeSource: 'live' as 'live' | 'test' | 'prop',
+  accountName: '',
 })
 
 function snapshotLabelIds(): string {
@@ -158,8 +179,10 @@ watch(
     form.income = t.income
     form.commission = t.commission
     form.funding = t.funding
+    form.entryNotionalUsdt = t.entryNotionalUsdt ?? ''
     form.rr = t.rr ?? ''
     form.tradeSource = t.tradeSource === 'test' || t.tradeSource === 'prop' ? t.tradeSource : 'live'
+    form.accountName = t.tradeSource === 'prop' ? (t.accountName ?? '') : ''
     form.noteGeneral = mergeGeneralFromTrade(t)
     form.noteSystemTs = t.noteSystemTs ?? ''
     form.noteTechniqueTs = t.noteTechniqueTs ?? ''
@@ -297,6 +320,7 @@ async function save() {
           noteTechniqueTs: form.noteTechniqueTs,
           noteAnalysisTs: form.noteAnalysisTs,
           tradeSource: form.tradeSource,
+          accountName: form.tradeSource === 'prop' ? form.accountName : null,
           labelIds,
         },
       })
@@ -314,6 +338,7 @@ async function save() {
           income: form.income,
           commission: form.commission,
           funding: form.funding,
+          entryNotionalUsdt: form.entryNotionalUsdt === '' ? null : Number(form.entryNotionalUsdt),
           rr: form.rr === '' ? null : Number(form.rr),
           noteSystem: form.noteGeneral.trim() || null,
           noteTechnique: null,
@@ -322,6 +347,7 @@ async function save() {
           noteTechniqueTs: form.noteTechniqueTs,
           noteAnalysisTs: form.noteAnalysisTs,
           tradeSource: form.tradeSource,
+          accountName: form.tradeSource === 'prop' ? form.accountName : null,
           labelIds,
         },
       })
@@ -343,7 +369,7 @@ async function save() {
         v-if="data.trade.tradeSource === 'test' || data.trade.tradeSource === 'prop'"
         class="trade-src-badge"
       >
-        {{ data.trade.tradeSource === 'test' ? 'тест' : 'проп' }}
+        {{ tradeSourceHeaderLabel }}
       </span>
     </div>
 
@@ -389,9 +415,7 @@ async function save() {
 
       <p v-else-if="data.trade.mergedFrom?.sourceIds?.length" class="merge-strip merged-from-strip">
         <span class="muted">Слияние:</span>
-        <span class="merged-ids">{{
-          data.trade.mergedFrom.sourceIds.map((id: number) => `#${id}`).join(', ')
-        }}</span>
+        <span class="merged-ids">{{ mergedSourceIdsLabel }}</span>
         <span class="muted tiny-hint">исходные сделки удалены, это одна агрегированная запись</span>
       </p>
 
@@ -481,6 +505,10 @@ async function save() {
                 <option value="prop">Проп</option>
               </select>
             </label>
+            <label v-if="form.tradeSource === 'prop'" class="meta-rr-label">
+              <span class="meta-lbl">Аккаунт пропа</span>
+              <input v-model="form.accountName" class="input input-tight" placeholder="FTMO 100k" />
+            </label>
             <span class="muted meta-rr-hint">можно взять с графика (блок «Расчёт RR»)</span>
           </div>
 
@@ -527,6 +555,10 @@ async function save() {
             <div>
               <label class="label">Фандинг <span class="muted">(USDT)</span></label>
               <input v-model.number="form.funding" class="input" type="number" step="any" />
+            </div>
+            <div>
+              <label class="label">Объём <span class="muted">(USDT)</span></label>
+              <input v-model="form.entryNotionalUsdt" class="input" type="number" step="any" placeholder="опционально" />
             </div>
           </div>
 

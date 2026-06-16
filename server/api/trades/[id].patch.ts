@@ -55,6 +55,11 @@ export default defineEventHandler(async (event) => {
     if ('tradeSource' in body && body.tradeSource !== undefined) {
       patch2.tradeSource = parseTradeSource(body.tradeSource)
     }
+    if ('accountName' in body) {
+      const source = typeof patch2.tradeSource === 'string' ? patch2.tradeSource : existing.tradeSource
+      const name = String(body.accountName ?? '').trim()
+      patch2.accountName = source === 'prop' && name ? name : null
+    }
     await db.update(trades).set(patch2 as never).where(eq(trades.id, id))
     if (labelIdsPatch) await replaceTradeLabels(db, id, labelIdsPatch)
     const [row2] = await db.select().from(trades).where(eq(trades.id, id))
@@ -77,6 +82,11 @@ export default defineEventHandler(async (event) => {
   if ('income' in body && body.income !== undefined) patch.income = Number(body.income)
   if ('commission' in body && body.commission !== undefined) patch.commission = Number(body.commission)
   if ('funding' in body && body.funding !== undefined) patch.funding = Number(body.funding)
+  if ('entryNotionalUsdt' in body) {
+    const n = Number(body.entryNotionalUsdt)
+    patch.entryNotionalUsdt =
+      body.entryNotionalUsdt == null || body.entryNotionalUsdt === '' || !Number.isFinite(n) ? null : n
+  }
   if ('rr' in body) patch.rr = body.rr == null || body.rr === '' ? null : Number(body.rr)
   if ('noteSystem' in body) patch.noteSystem = body.noteSystem == null ? null : String(body.noteSystem)
   if ('noteTechnique' in body)
@@ -88,6 +98,11 @@ export default defineEventHandler(async (event) => {
   if ('noteAnalysisTs' in body) patch.noteAnalysisTs = body.noteAnalysisTs == null ? null : String(body.noteAnalysisTs)
   if ('tradeSource' in body && body.tradeSource !== undefined) {
     patch.tradeSource = parseTradeSource(body.tradeSource)
+  }
+  if ('accountName' in body) {
+    const source = typeof patch.tradeSource === 'string' ? patch.tradeSource : existing.tradeSource
+    const name = String(body.accountName ?? '').trim()
+    patch.accountName = source === 'prop' && name ? name : null
   }
   await db.update(trades).set(patch as never).where(eq(trades.id, id))
   if (labelIdsPatch) await replaceTradeLabels(db, id, labelIdsPatch)
