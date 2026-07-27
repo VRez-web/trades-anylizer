@@ -15,6 +15,7 @@ import {
   eventUnixSeconds,
   sortBarsByTime,
 } from '#shared/tradeChartMarkers'
+import { chartProviderLabel, defaultChartMeta } from '#shared/chartMeta'
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 
 export interface JournalDayTrade {
@@ -33,8 +34,24 @@ const props = withDefaults(
     trades: JournalDayTrade[]
     height?: number
     marketCategory?: string
+    chartProvider?: 'bybit' | 'yahoo'
   }>(),
-  { height: 340, marketCategory: 'linear' },
+  { height: 340 },
+)
+
+const chartMeta = computed(() => {
+  if (props.chartProvider && props.marketCategory) {
+    return {
+      chartSymbol: props.symbol,
+      chartProvider: props.chartProvider,
+      marketCategory: props.marketCategory,
+    }
+  }
+  return defaultChartMeta(props.symbol)
+})
+
+const sourceLabel = computed(() =>
+  chartProviderLabel(chartMeta.value.chartProvider, chartMeta.value.marketCategory),
 )
 
 const tf = ref('15')
@@ -74,18 +91,20 @@ const tradesKey = computed(() =>
 )
 
 const klineUrl = computed(() => {
+  const meta = chartMeta.value
   const p = new URLSearchParams({
-    symbol: props.symbol,
+    symbol: meta.chartSymbol,
     interval: tf.value,
     start: String(range.value.startMs),
     end: String(range.value.endMs),
-    category: props.marketCategory,
+    category: meta.marketCategory,
+    provider: meta.chartProvider,
   })
   return `/api/market/kline?${p}`
 })
 
 const { data, error, pending } = useFetch(klineUrl, {
-  watch: [tf, () => props.symbol, tradesKey, () => props.marketCategory],
+  watch: [tf, () => props.symbol, tradesKey, () => props.marketCategory, () => props.chartProvider],
 })
 
 const root = ref<HTMLDivElement | null>(null)

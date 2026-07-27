@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import type { ChartMeta } from '#shared/chartMeta'
 type LabelItem = { kind: string; label: string }
 
 type TradeSource = 'live' | 'test' | 'prop'
@@ -283,7 +284,16 @@ const addForm = reactive({
   rr: '' as string | number,
   tradeSource: 'test' as TradeSource,
   accountName: '',
+  chartSymbol: '',
+  chartProvider: 'bybit' as ChartMeta['chartProvider'],
+  marketCategory: 'linear',
 })
+
+function applyAddChartMeta(meta: ChartMeta) {
+  addForm.chartSymbol = meta.chartSymbol
+  addForm.chartProvider = meta.chartProvider
+  addForm.marketCategory = meta.marketCategory
+}
 
 function openAddTrade() {
   const now = new Date()
@@ -302,6 +312,9 @@ function openAddTrade() {
   addForm.rr = ''
   addForm.tradeSource = 'test'
   addForm.accountName = ''
+  addForm.chartSymbol = ''
+  addForm.chartProvider = 'bybit'
+  addForm.marketCategory = 'linear'
   addOpen.value = true
 }
 
@@ -325,6 +338,9 @@ async function submitAddTrade() {
         rr: addForm.rr === '' ? null : Number(addForm.rr),
         tradeSource: addForm.tradeSource,
         accountName: addForm.tradeSource === 'prop' ? addForm.accountName : null,
+        chartSymbol: addForm.chartSymbol || addForm.symbol,
+        chartProvider: addForm.chartProvider,
+        marketCategory: addForm.marketCategory,
       },
     })
     addOpen.value = false
@@ -781,7 +797,7 @@ function fmtRr(v: number | null) {
               </template>
               <span v-else class="muted">—</span>
             </td>
-            <td>{{ t.side }}</td>
+            <td>{{ t.side === 'long' ? 'Long' : 'Short' }}</td>
             <td :class="t.net >= 0 ? 'pos' : 'neg'">{{ fmtUsdt(t.net) }}</td>
             <td>{{ t.rr == null ? '—' : t.rr.toFixed(2) }}</td>
             <td>
@@ -799,9 +815,15 @@ function fmtRr(v: number | null) {
         <h2 class="modal-title">Новая сделка</h2>
         <p class="muted modal-lead">Ручной ввод — выберите источник сделки и укажите объём, если он известен.</p>
         <div class="modal-grid">
-          <label class="fl">
+          <label class="fl fl-span">
             <span class="fl-l">Тикер</span>
-            <input v-model="addForm.symbol" class="input" placeholder="BTCUSDT" />
+            <InstrumentCombobox
+              v-model="addForm.symbol"
+              placeholder="BTCUSDT, GBPUSD…"
+              @update:meta="applyAddChartMeta"
+            />
+            <span v-if="addForm.chartProvider === 'yahoo'" class="muted inst-hint">Forex → Yahoo Finance</span>
+            <span v-else-if="addForm.marketCategory !== 'linear'" class="muted inst-hint">Bybit · {{ addForm.marketCategory }}</span>
           </label>
           <label class="fl">
             <span class="fl-l">Источник</span>
@@ -977,22 +999,34 @@ function fmtRr(v: number | null) {
   vertical-align: middle;
 }
 .col-time {
-  width: 26%;
+  width: 21%;
 }
 .col-sym {
-  width: 18%;
+  width: 13%;
+}
+.col-src {
+  width: 11%;
+  min-width: 3.5rem;
 }
 .col-side {
-  width: 12%;
+  width: 9%;
+  white-space: nowrap;
 }
 .col-net {
-  width: 22%;
+  width: 17%;
 }
 .col-an {
-  width: 12%;
+  width: 11%;
 }
 .col-rr {
-  width: 10%;
+  width: 8%;
+}
+.fl-span {
+  grid-column: 1 / -1;
+}
+.inst-hint {
+  margin-top: 0.2rem;
+  font-size: 0.72rem;
 }
 .tbl tbody tr.tbl-row {
   cursor: pointer;

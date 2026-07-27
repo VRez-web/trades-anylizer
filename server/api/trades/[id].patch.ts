@@ -3,7 +3,22 @@ import { useDb } from '../../utils/db'
 import { trades } from '../../database/schema'
 import { parseLabelIds } from '../../utils/labelIdsBody'
 import { replaceTradeLabels } from '../../utils/tradeLabels'
+import { parseChartMetaBody } from '../../utils/chartProvider'
 import { parseTradeSource } from '../../utils/tradeSource'
+
+function applyChartMetaPatch(patch: Record<string, unknown>, body: Record<string, unknown>, symbol: string) {
+  if (
+    'chartSymbol' in body ||
+    'chartProvider' in body ||
+    'marketCategory' in body ||
+    'symbol' in body
+  ) {
+    const meta = parseChartMetaBody({ ...body, symbol }, symbol)
+    patch.chartSymbol = meta.chartSymbol
+    patch.chartProvider = meta.chartProvider
+    patch.marketCategory = meta.marketCategory
+  }
+}
 
 export default defineEventHandler(async (event) => {
   const id = Number(getRouterParam(event, 'id'))
@@ -60,6 +75,7 @@ export default defineEventHandler(async (event) => {
       const name = String(body.accountName ?? '').trim()
       patch2.accountName = source === 'prop' && name ? name : null
     }
+    applyChartMetaPatch(patch2, body, existing.symbol)
     await db.update(trades).set(patch2 as never).where(eq(trades.id, id))
     if (labelIdsPatch) await replaceTradeLabels(db, id, labelIdsPatch)
     const [row2] = await db.select().from(trades).where(eq(trades.id, id))
@@ -104,6 +120,9 @@ export default defineEventHandler(async (event) => {
     const name = String(body.accountName ?? '').trim()
     patch.accountName = source === 'prop' && name ? name : null
   }
+  const symbolForChart =
+    typeof patch.symbol === 'string' ? patch.symbol : existing.symbol
+  applyChartMetaPatch(patch, body, symbolForChart)
   await db.update(trades).set(patch as never).where(eq(trades.id, id))
   if (labelIdsPatch) await replaceTradeLabels(db, id, labelIdsPatch)
   const [row] = await db.select().from(trades).where(eq(trades.id, id))

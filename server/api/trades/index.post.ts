@@ -2,6 +2,7 @@ import { useDb } from '../../utils/db'
 import { trades } from '../../database/schema'
 import { parseLabelIds } from '../../utils/labelIdsBody'
 import { replaceTradeLabels } from '../../utils/tradeLabels'
+import { parseChartMetaBody } from '../../utils/chartProvider'
 import { parseTradeSource } from '../../utils/tradeSource'
 
 function parseBody(body: Record<string, unknown>) {
@@ -25,6 +26,7 @@ function parseBody(body: Record<string, unknown>) {
   }
   const tradeSource = parseTradeSource(body.tradeSource)
   const accountName = String(body.accountName ?? '').trim()
+  const chartMeta = parseChartMetaBody(body, symbol)
   const now = new Date()
   return {
     symbol,
@@ -49,6 +51,9 @@ function parseBody(body: Record<string, unknown>) {
     noteAnalysisTs: body.noteAnalysisTs != null ? String(body.noteAnalysisTs) : null,
     tradeSource,
     accountName: tradeSource === 'prop' && accountName ? accountName : null,
+    chartSymbol: chartMeta.chartSymbol,
+    marketCategory: chartMeta.marketCategory,
+    chartProvider: chartMeta.chartProvider,
     createdAt: now,
     updatedAt: now,
   }

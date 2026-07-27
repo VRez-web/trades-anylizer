@@ -16,6 +16,7 @@ import {
   eventUnixSeconds,
   sortBarsByTime,
 } from '#shared/tradeChartMarkers'
+import { chartProviderLabel } from '#shared/chartMeta'
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 
 /** Ноги объединённой сделки (время/цена каждой исходной записи). Без этого — одна пара вход/выход. */
@@ -38,9 +39,12 @@ const props = withDefaults(
     side?: 'long' | 'short'
     height?: number
     marketCategory?: string
+    chartProvider?: 'bybit' | 'yahoo'
   }>(),
-  { side: 'long', height: 380, marketCategory: 'linear' },
+  { side: 'long', height: 380, marketCategory: 'linear', chartProvider: 'bybit' },
 )
+
+const sourceLabel = computed(() => chartProviderLabel(props.chartProvider, props.marketCategory ?? 'linear'))
 
 const tf = ref('15')
 const tfOptions = [
@@ -79,12 +83,21 @@ const klineUrl = computed(() => {
     start: String(range.value.startMs),
     end: String(range.value.endMs),
     category: props.marketCategory,
+    provider: props.chartProvider,
   })
   return `/api/market/kline?${p}`
 })
 
 const { data, error, pending } = useFetch(klineUrl, {
-  watch: [tf, () => props.symbol, () => props.entryAt, () => props.exitAt, () => props.marketCategory, () => props.mergeLegs],
+  watch: [
+    tf,
+    () => props.symbol,
+    () => props.entryAt,
+    () => props.exitAt,
+    () => props.marketCategory,
+    () => props.chartProvider,
+    () => props.mergeLegs,
+  ],
 })
 
 const root = ref<HTMLDivElement | null>(null)
@@ -354,7 +367,7 @@ onUnmounted(() => {
 <template>
   <div class="wrap">
     <div class="head">
-      <span class="muted title-line">{{ symbol }} · свечи Bybit ({{ marketCategory }})</span>
+      <span class="muted title-line">{{ symbol }} · {{ sourceLabel }}</span>
       <div class="tf row">
         <span class="muted tf-label">Таймфрейм:</span>
         <button

@@ -1,3 +1,6 @@
+import { fetchYahooKlinesRange } from '../../utils/yahooKline'
+import { looksLikeForexSymbol, parseChartProvider, parseMarketCategory, yahooTicker } from '../../utils/chartProvider'
+
 const MAINNET = 'https://api.bybit.com'
 const TESTNET = 'https://api-testnet.bybit.com'
 
@@ -86,7 +89,14 @@ export default defineEventHandler(async (event) => {
   const startMs = Number(q.start)
   const endMs = Number(q.end)
   const categoryRaw = String(q.category ?? 'linear').toLowerCase()
-  const category = categoryRaw === 'inverse' || categoryRaw === 'spot' ? categoryRaw : 'linear'
+  const category = parseMarketCategory(categoryRaw)
+  const providerRaw = String(q.provider ?? '').toLowerCase()
+  const provider =
+    providerRaw === 'yahoo' || providerRaw === 'bybit'
+      ? parseChartProvider(providerRaw)
+      : looksLikeForexSymbol(symbol)
+        ? 'yahoo'
+        : 'bybit'
   if (!symbol) {
     throw createError({ statusCode: 400, statusMessage: 'Укажите symbol' })
   }
@@ -101,6 +111,15 @@ export default defineEventHandler(async (event) => {
     config.bybitTestnet === true || String(config.bybitTestnet ?? '').toLowerCase().trim() === 'true'
   const baseUrl = bybitMarketBaseUrl(testnet)
   try {
+    if (provider === 'yahoo') {
+      const bars = await fetchYahooKlinesRange({
+        ticker: yahooTicker(symbol),
+        interval,
+        startMs,
+        endMs,
+      })
+      return { bars, provider: 'yahoo' }
+    }
     const bars = await fetchBybitKlinesRange({
       baseUrl,
       category,
@@ -109,7 +128,7 @@ export default defineEventHandler(async (event) => {
       startMs,
       endMs,
     })
-    return { bars }
+    return { bars, provider: 'bybit' }
   } catch (e) {
     const msg = e instanceof Error ? e.message : 'Ошибка загрузки свечей'
     throw createError({ statusCode: 502, statusMessage: msg })

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { resolveChartMeta, type ChartMeta } from '#shared/chartMeta'
 import { tradeNoteHints } from '#shared/tradeNoteHints'
 import { estimateQuoteVolumeUsdt } from '#shared/tradeQuoteVolume'
 
@@ -130,7 +131,24 @@ const form = reactive({
   },
   tradeSource: 'live' as 'live' | 'test' | 'prop',
   accountName: '',
+  chartSymbol: '',
+  chartProvider: 'bybit' as ChartMeta['chartProvider'],
+  marketCategory: 'linear',
 })
+
+function applyChartMeta(meta: ChartMeta) {
+  form.chartSymbol = meta.chartSymbol
+  form.chartProvider = meta.chartProvider
+  form.marketCategory = meta.marketCategory
+}
+
+const chartMetaLive = computed(() =>
+  resolveChartMeta(form.symbol, {
+    chartSymbol: form.chartSymbol,
+    chartProvider: form.chartProvider,
+    marketCategory: form.marketCategory,
+  }),
+)
 
 function snapshotLabelIds(): string {
   const norm = (a: number[]) => [...a].sort((x, y) => x - y)
@@ -183,6 +201,14 @@ watch(
     form.rr = t.rr ?? ''
     form.tradeSource = t.tradeSource === 'test' || t.tradeSource === 'prop' ? t.tradeSource : 'live'
     form.accountName = t.tradeSource === 'prop' ? (t.accountName ?? '') : ''
+    const meta = resolveChartMeta(t.symbol, {
+      chartSymbol: t.chartSymbol,
+      chartProvider: t.chartProvider,
+      marketCategory: t.marketCategory,
+    })
+    form.chartSymbol = meta.chartSymbol
+    form.chartProvider = meta.chartProvider
+    form.marketCategory = meta.marketCategory
     form.noteGeneral = mergeGeneralFromTrade(t)
     form.noteSystemTs = t.noteSystemTs ?? ''
     form.noteTechniqueTs = t.noteTechniqueTs ?? ''
@@ -308,6 +334,11 @@ async function save() {
       technique: form.labelIds.technique,
       psychology: form.labelIds.psychology,
     }
+    const chartPayload = {
+      chartSymbol: form.chartSymbol,
+      chartProvider: form.chartProvider,
+      marketCategory: form.marketCategory,
+    }
     if (isFromSync.value) {
       await $fetch(`/api/trades/${id.value}`, {
         method: 'PATCH',
@@ -321,6 +352,7 @@ async function save() {
           noteAnalysisTs: form.noteAnalysisTs,
           tradeSource: form.tradeSource,
           accountName: form.tradeSource === 'prop' ? form.accountName : null,
+          ...chartPayload,
           labelIds,
         },
       })
@@ -348,6 +380,7 @@ async function save() {
           noteAnalysisTs: form.noteAnalysisTs,
           tradeSource: form.tradeSource,
           accountName: form.tradeSource === 'prop' ? form.accountName : null,
+          ...chartPayload,
           labelIds,
         },
       })
@@ -469,7 +502,9 @@ async function save() {
       <div class="trade-split__chart card chart-card">
         <ClientOnly>
           <TradeCandleChart
-            :symbol="data.trade.symbol"
+            :symbol="chartMetaLive.chartSymbol"
+            :chart-provider="chartMetaLive.chartProvider"
+            :market-category="chartMetaLive.marketCategory"
             :side="data.trade.side"
             :entry-at="data.trade.entryAt"
             :exit-at="data.trade.exitAt"
@@ -512,10 +547,24 @@ async function save() {
             <span class="muted meta-rr-hint">можно взять с графика (блок «Расчёт RR»)</span>
           </div>
 
+          <div v-if="isFromSync" class="chart-inst-block">
+            <label class="label">Инструмент для графика</label>
+            <InstrumentCombobox
+              v-model="form.chartSymbol"
+              @update:meta="applyChartMeta"
+            />
+            <p class="muted chart-inst-hint">
+              Тикер с биржи не меняется; здесь можно указать пару для свечей (например GBPUSD → Yahoo).
+            </p>
+          </div>
+
           <div v-if="!isFromSync" class="grid2 manual-grid">
-            <div>
+            <div class="manual-span-2">
               <label class="label">Тикер</label>
-              <input v-model="form.symbol" class="input" />
+              <InstrumentCombobox
+                v-model="form.symbol"
+                @update:meta="applyChartMeta"
+              />
             </div>
             <div>
               <label class="label">Сторона</label>
@@ -878,6 +927,17 @@ async function save() {
 }
 .manual-grid {
   margin-top: 0.35rem;
+}
+.manual-span-2 {
+  grid-column: 1 / -1;
+}
+.chart-inst-block {
+  margin: 0.35rem 0 0.75rem;
+}
+.chart-inst-hint {
+  margin: 0.35rem 0 0;
+  font-size: 0.75rem;
+  line-height: 1.35;
 }
 .ts-toggle {
   align-items: flex-start;
