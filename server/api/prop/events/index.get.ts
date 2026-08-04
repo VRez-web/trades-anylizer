@@ -1,7 +1,7 @@
 import { asc } from 'drizzle-orm'
-import { useDb } from '../../utils/db'
-import { propEvents } from '../../database/schema'
-import { serializePropEvent } from '../../utils/propCashflow'
+import { useDb } from '../../../utils/db'
+import { propEvents } from '../../../database/schema'
+import { serializePropEvent } from '../../../utils/propCashflow'
 
 export default defineEventHandler(async () => {
   const db = useDb()
