@@ -5,6 +5,7 @@ import type { LabelKind } from '../database/schema'
 import { netProfit, type TradeRow } from './tradeMath'
 import type { AppDatabase } from '../types/app-database'
 import { selectTradesExcludingMergedOrphans } from './mergedTradeSync'
+import { isLiveEquityTrade } from './propCashflow'
 
 type Db = AppDatabase
 
@@ -18,7 +19,8 @@ async function listTradesInRange(db: Db, from: Date, to: Date) {
     .from(trades)
     .where(and(gte(trades.exitAt, from), lte(trades.exitAt, to)))
     .orderBy(asc(trades.exitAt))
-  return selectTradesExcludingMergedOrphans(db, rows)
+  const list = await selectTradesExcludingMergedOrphans(db, rows)
+  return list.filter(isLiveEquityTrade)
 }
 
 export function exitDateKeyLocal(exitAt: Date) {
@@ -131,7 +133,7 @@ export async function calendarMonthPeriodFlags(db: Db, year: number, monthIndex0
 
 export async function equitySeries(db: Db) {
   const raw = await db.select().from(trades).orderBy(asc(trades.exitAt))
-  const rows = await selectTradesExcludingMergedOrphans(db, raw)
+  const rows = (await selectTradesExcludingMergedOrphans(db, raw)).filter(isLiveEquityTrade)
   let cum = 0
   const points: { t: string; net: number; cumulative: number }[] = []
   for (const t of rows) {

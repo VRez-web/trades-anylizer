@@ -17,6 +17,10 @@ export const chartProviderEnum = ['bybit', 'yahoo'] as const
 export type ChartProvider = (typeof chartProviderEnum)[number]
 
 export const tradeSourceEnum = ['live', 'test', 'prop'] as const
+export type TradeSource = (typeof tradeSourceEnum)[number]
+
+export const propEventKindEnum = ['purchase', 'payout'] as const
+export type PropEventKind = (typeof propEventKindEnum)[number]
 
 export const labelDefs = pgTable(
   'label_defs',
@@ -119,4 +123,25 @@ export const strategyDoc = pgTable('strategy_doc', {
   updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'date' }).notNull(),
 })
 
-export const schema = { labelDefs, mergeGroups, periodNotes, reasons, strategyDoc, tradeLabelLinks, trades }
+/** Покупка проп-аккаунта или выплата — отдельно от торгового PnL. */
+export const propEvents = pgTable('prop_events', {
+  id: serial('id').primaryKey(),
+  kind: text('kind', { enum: propEventKindEnum }).notNull(),
+  accountName: text('account_name').notNull(),
+  amountUsdt: doublePrecision('amount_usdt').notNull(),
+  eventAt: timestamp('event_at', { withTimezone: true, mode: 'date' }).notNull(),
+  note: text('note'),
+  createdAt: timestamp('created_at', { withTimezone: true, mode: 'date' }).notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'date' }).notNull(),
+})
+
+export const schema = {
+  labelDefs,
+  mergeGroups,
+  periodNotes,
+  propEvents,
+  reasons,
+  strategyDoc,
+  tradeLabelLinks,
+  trades,
+}

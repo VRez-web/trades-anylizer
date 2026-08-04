@@ -108,6 +108,7 @@ function goDay(date: string) {
 
     <div class="card" style="margin-top: 1rem">
       <h2>Кривая доходности</h2>
+      <p class="muted bars-caption">Только live-сделки; проп не учитывается.</p>
       <ClientOnly>
         <EquityChart v-if="equityPoints.length" :points="equityPoints" />
         <template #fallback>

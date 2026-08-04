@@ -42,6 +42,7 @@ async function runBybitSync() {
         <nav class="nav">
           <NuxtLink to="/trades">Сделки</NuxtLink>
           <NuxtLink to="/trades/list">Список</NuxtLink>
+          <NuxtLink to="/prop">Проп</NuxtLink>
           <NuxtLink to="/system">Торговая система</NuxtLink>
           <div class="sub">
             <span class="sub-label">Журнал</span>

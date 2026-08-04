@@ -30,6 +30,8 @@ const LABEL_KIND_RU: Record<string, string> = {
 
 const LIST_FILTERS_KEY = 'trades-analyzer:list-filters'
 
+const route = useRoute()
+
 const side = ref<'all' | 'long' | 'short'>('all')
 const result = ref<'all' | 'win' | 'loss'>('all')
 /** all — без фильтра; with/without — как в isAnalysisComplete (общий и/или ТС). */
@@ -189,6 +191,10 @@ watch(labelGroupMode, () => {
 
 onMounted(() => {
   loadSavedFilters()
+  const qSource = route.query.tradeSource
+  if (qSource === 'live' || qSource === 'test' || qSource === 'prop') {
+    tradeSource.value = qSource
+  }
   filtersReady.value = true
   saveFilters()
   if (infoOpen.value) refreshInfo()
