@@ -6,6 +6,17 @@ import { replaceTradeLabels } from '../../utils/tradeLabels'
 import { parseChartMetaBody } from '../../utils/chartProvider'
 import { parseTradeSource } from '../../utils/tradeSource'
 
+function parseOptionalPrice(v: unknown): number | null {
+  if (v == null || v === '') return null
+  const n = Number(v)
+  return Number.isFinite(n) ? n : null
+}
+
+function applyStopTakePatch(patch: Record<string, unknown>, body: Record<string, unknown>) {
+  if ('stopPrice' in body) patch.stopPrice = parseOptionalPrice(body.stopPrice)
+  if ('takeProfitPrice' in body) patch.takeProfitPrice = parseOptionalPrice(body.takeProfitPrice)
+}
+
 function applyChartMetaPatch(patch: Record<string, unknown>, body: Record<string, unknown>, symbol: string) {
   if (
     'chartSymbol' in body ||
@@ -75,6 +86,7 @@ export default defineEventHandler(async (event) => {
       const name = String(body.accountName ?? '').trim()
       patch2.accountName = source === 'prop' && name ? name : null
     }
+    applyStopTakePatch(patch2, body)
     applyChartMetaPatch(patch2, body, existing.symbol)
     await db.update(trades).set(patch2 as never).where(eq(trades.id, id))
     if (labelIdsPatch) await replaceTradeLabels(db, id, labelIdsPatch)
@@ -120,6 +132,7 @@ export default defineEventHandler(async (event) => {
     const name = String(body.accountName ?? '').trim()
     patch.accountName = source === 'prop' && name ? name : null
   }
+  applyStopTakePatch(patch, body)
   const symbolForChart =
     typeof patch.symbol === 'string' ? patch.symbol : existing.symbol
   applyChartMetaPatch(patch, body, symbolForChart)

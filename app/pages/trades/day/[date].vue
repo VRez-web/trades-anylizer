@@ -210,8 +210,7 @@ async function unmergeGroup(mergeGroupId: number) {
           <th>Выход</th>
           <th>Чистый</th>
           <th>Лейблы</th>
-          <th>Общий</th>
-          <th>ТС</th>
+          <th>Анализ</th>
           <th>Слияние</th>
         </tr>
       </thead>
@@ -257,14 +256,11 @@ async function unmergeGroup(mergeGroupId: number) {
             </div>
           </td>
           <td>
-            <span class="analysis-cell" :class="t.generalAnalysisDone ? 'yes' : 'no'">{{
-              t.generalAnalysisDone ? 'да' : 'нет'
-            }}</span>
-          </td>
-          <td>
-            <span class="analysis-cell" :class="t.tsAnalysisDone ? 'yes' : 'no'">{{
-              t.tsAnalysisDone ? 'да' : 'нет'
-            }}</span>
+            <AnalysisSectionBadges
+              v-if="t.analysisSections"
+              :sections="t.analysisSections"
+            />
+            <span v-else class="muted">—</span>
           </td>
           <td class="grp-cell" @click.stop>
             <template v-if="t.mergeGroupId">

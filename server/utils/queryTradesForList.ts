@@ -105,6 +105,9 @@ export async function queryTradesForList(db: Db, q: Record<string, unknown>): Pr
   if (q.tradeSource === 'live' || q.tradeSource === 'test' || q.tradeSource === 'prop') {
     conditions.push(eq(trades.tradeSource, q.tradeSource))
   }
+  if (q.accountName && typeof q.accountName === 'string' && q.accountName.trim()) {
+    conditions.push(eq(trades.accountName, q.accountName.trim()))
+  }
   if (q.result === 'win') {
     conditions.push(sql`${trades.income} - ${trades.commission} + ${trades.funding} > 0`)
   } else if (q.result === 'loss') {

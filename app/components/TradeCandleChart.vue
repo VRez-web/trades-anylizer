@@ -14,6 +14,7 @@ import {
   bindSeriesMarkersLayoutSync,
   entryExitLabels,
   eventUnixSeconds,
+  fmtMarkerTime,
   sortBarsByTime,
 } from '#shared/tradeChartMarkers'
 import { chartProviderLabel } from '#shared/chartMeta'
@@ -40,6 +41,8 @@ const props = withDefaults(
     height?: number
     marketCategory?: string
     chartProvider?: 'bybit' | 'yahoo'
+    stopPrice?: number | null
+    takeProfitPrice?: number | null
   }>(),
   { side: 'long', height: 380, marketCategory: 'linear', chartProvider: 'bybit' },
 )
@@ -145,6 +148,12 @@ function draw() {
     legs?.length != null && legs.length > 0
       ? legs.flatMap((l) => [l.entryPrice, l.exitPrice])
       : [props.entryPrice, props.exitPrice]
+  if (typeof props.stopPrice === 'number' && Number.isFinite(props.stopPrice)) {
+    extraPrices.push(props.stopPrice)
+  }
+  if (typeof props.takeProfitPrice === 'number' && Number.isFinite(props.takeProfitPrice)) {
+    extraPrices.push(props.takeProfitPrice)
+  }
   const pr = priceRange(bars, extraPrices)
   const mid = pr
     ? (pr.from + pr.to) / 2
@@ -187,6 +196,27 @@ function draw() {
   series.setData(bars)
   const useLegs = legs?.length != null && legs.length > 0
 
+  if (typeof props.stopPrice === 'number' && Number.isFinite(props.stopPrice)) {
+    series.createPriceLine({
+      price: props.stopPrice,
+      color: '#dc2626',
+      lineWidth: 2,
+      lineStyle: LineStyle.Dotted,
+      axisLabelVisible: true,
+      title: 'SL',
+    })
+  }
+  if (typeof props.takeProfitPrice === 'number' && Number.isFinite(props.takeProfitPrice)) {
+    series.createPriceLine({
+      price: props.takeProfitPrice,
+      color: '#16a34a',
+      lineWidth: 2,
+      lineStyle: LineStyle.Dotted,
+      axisLabelVisible: true,
+      title: 'TP',
+    })
+  }
+
   type M =
     | {
         time: number
@@ -223,7 +253,7 @@ function draw() {
           price: leg.entryPrice,
           color: MARKER.entry,
           shape: 'circle',
-          text: lIn,
+          text: `${lIn} ${fmtMarkerTime(leg.entryAt)}`,
         },
         {
           time: bt,
@@ -231,13 +261,15 @@ function draw() {
           price: leg.exitPrice,
           color: MARKER.exit,
           shape: 'circle',
-          text: lOut,
+          text: `${lOut} ${fmtMarkerTime(leg.exitAt)}`,
         },
       )
     })
     markersSorted = circleMarkers.sort((a, b) => a.time - b.time || a.price - b.price)
   } else {
     const { entry: labIn, exit: labOut } = entryExitLabels(1, props.side)
+    const inLabel = `${labIn} ${fmtMarkerTime(props.entryAt)}`
+    const outLabel = `${labOut} ${fmtMarkerTime(props.exitAt)}`
     series.createPriceLine({
       price: props.entryPrice,
       color: MARKER.entry,
@@ -267,7 +299,7 @@ function draw() {
               price: props.entryPrice,
               color: MARKER.entry,
               shape: 'arrowDown',
-              text: labIn,
+              text: inLabel,
             },
             {
               time: tx,
@@ -275,7 +307,7 @@ function draw() {
               price: props.exitPrice,
               color: MARKER.exit,
               shape: 'arrowUp',
-              text: labOut,
+              text: outLabel,
             },
           ]
         : [
@@ -285,7 +317,7 @@ function draw() {
               price: props.entryPrice,
               color: MARKER.entry,
               shape: 'arrowUp',
-              text: labIn,
+              text: inLabel,
             },
             {
               time: tx,
@@ -293,7 +325,7 @@ function draw() {
               price: props.exitPrice,
               color: MARKER.exit,
               shape: 'arrowDown',
-              text: labOut,
+              text: outLabel,
             },
           ]
     markersSorted = [...markers].sort((a, b) => a.time - b.time || a.price - b.price)
@@ -325,8 +357,11 @@ const showMergeLegsHint = computed(() => (props.mergeLegs?.length ?? 0) > 0)
 watch(
   () => [
     data.value?.bars,
+    tf.value,
     props.entryPrice,
     props.exitPrice,
+    props.stopPrice,
+    props.takeProfitPrice,
     props.entryAt,
     props.exitAt,
     props.height,

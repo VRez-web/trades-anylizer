@@ -1,8 +1,10 @@
 import { useDb } from '../../utils/db'
-import { propCashflowSeries, propSummary } from '../../utils/propCashflow'
+import { propSummary } from '../../utils/propCashflow'
 
-export default defineEventHandler(async () => {
+export default defineEventHandler(async (event) => {
+  const q = getQuery(event)
+  const accountName = typeof q.accountName === 'string' && q.accountName.trim() ? q.accountName.trim() : undefined
   const db = useDb()
-  const [summary, series] = await Promise.all([propSummary(db), propCashflowSeries(db)])
-  return { summary, series }
+  const summary = await propSummary(db, accountName)
+  return { summary }
 })

@@ -89,6 +89,11 @@ export default defineEventHandler(async (event) => {
         noteAnalysisTs: payload.noteAnalysisTs,
         mergeGroupId: null,
         mergedFrom: payload.mergedFrom,
+        tradeSource: payload.tradeSource,
+        accountName: payload.accountName,
+        chartSymbol: payload.chartSymbol,
+        marketCategory: payload.marketCategory,
+        chartProvider: payload.chartProvider,
         createdAt: payload.createdAt,
         updatedAt: payload.updatedAt,
       })

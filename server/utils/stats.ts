@@ -5,7 +5,8 @@ import type { LabelKind } from '../database/schema'
 import { netProfit, type TradeRow } from './tradeMath'
 import type { AppDatabase } from '../types/app-database'
 import { selectTradesExcludingMergedOrphans } from './mergedTradeSync'
-import { isLiveEquityTrade } from './propCashflow'
+import { propEvents, type PropEventKind } from '../database/schema'
+import { isLiveEquityTrade, signedPropEventAmount } from './propCashflow'
 
 type Db = AppDatabase
 
@@ -64,13 +65,30 @@ export function localDayBounds(dateStr: string) {
 
 export async function calendarMonth(db: Db, year: number, monthIndex0: number, tzOffsetMinutes = 0) {
   const { from, to } = monthBoundsAtOffset(year, monthIndex0, tzOffsetMinutes)
-  const rows = await listTradesInRange(db, from, to)
+  const rawAll = await db
+    .select()
+    .from(trades)
+    .where(and(gte(trades.exitAt, from), lte(trades.exitAt, to)))
+    .orderBy(asc(trades.exitAt))
+  const allList = await selectTradesExcludingMergedOrphans(db, rawAll)
+  const rows = allList.filter(isLiveEquityTrade)
+
   const byDay = new Map<string, number>()
+  const dayMeta = new Map<string, { liveCount: number; propCount: number }>()
+
+  for (const t of allList) {
+    const k = exitDateKeyAtOffset(t.exitAt, tzOffsetMinutes)
+    const meta = dayMeta.get(k) ?? { liveCount: 0, propCount: 0 }
+    if (t.tradeSource === 'prop') meta.propCount++
+    else meta.liveCount++
+    dayMeta.set(k, meta)
+  }
+
   for (const t of rows) {
     const k = exitDateKeyAtOffset(t.exitAt, tzOffsetMinutes)
     byDay.set(k, (byDay.get(k) ?? 0) + netForTrade(t))
   }
-  return { byDay, from, to, tradesCount: rows.length }
+  return { byDay, from, to, tradesCount: rows.length, dayMeta }
 }
 
 export async function calendarMonthJournalFlags(db: Db, year: number, monthIndex1: number) {
@@ -131,21 +149,64 @@ export async function calendarMonthPeriodFlags(db: Db, year: number, monthIndex0
   return { monthAnalysis, weekAnalysisByKey }
 }
 
+export type EquityMarker = {
+  t: string
+  kind: 'purchase' | 'payout'
+  accountName: string
+  amountUsdt: number
+}
+
 export async function equitySeries(db: Db) {
+  return (await combinedEquitySeries(db)).points
+}
+
+/** Live/test PnL + денежный поток пропов (покупки/выплаты); торговый PnL проп-сделок не включается. */
+export async function combinedEquitySeries(db: Db) {
   const raw = await db.select().from(trades).orderBy(asc(trades.exitAt))
-  const rows = (await selectTradesExcludingMergedOrphans(db, raw)).filter(isLiveEquityTrade)
-  let cum = 0
-  const points: { t: string; net: number; cumulative: number }[] = []
-  for (const t of rows) {
-    const n = netForTrade(t)
-    cum += n
-    points.push({
-      t: t.exitAt.toISOString(),
-      net: n,
-      cumulative: cum,
+  const tradeRows = (await selectTradesExcludingMergedOrphans(db, raw)).filter(isLiveEquityTrade)
+  const eventRows = await db.select().from(propEvents).orderBy(asc(propEvents.eventAt), asc(propEvents.id))
+
+  type TimelineItem = {
+    at: Date
+    net: number
+    sortKey: string
+    marker?: EquityMarker
+  }
+  const items: TimelineItem[] = []
+
+  for (const t of tradeRows) {
+    items.push({ at: t.exitAt, net: netForTrade(t), sortKey: `t-${t.id}` })
+  }
+  for (const r of eventRows) {
+    const net = signedPropEventAmount(r.kind as PropEventKind, r.amountUsdt)
+    items.push({
+      at: r.eventAt,
+      net,
+      sortKey: `e-${r.id}`,
+      marker: {
+        t: r.eventAt.toISOString(),
+        kind: r.kind as 'purchase' | 'payout',
+        accountName: r.accountName,
+        amountUsdt: r.amountUsdt,
+      },
     })
   }
-  return points
+
+  items.sort((a, b) => {
+    const dt = a.at.getTime() - b.at.getTime()
+    if (dt !== 0) return dt
+    return a.sortKey.localeCompare(b.sortKey)
+  })
+
+  let cum = 0
+  const points: { t: string; net: number; cumulative: number }[] = []
+  const markers: EquityMarker[] = []
+  for (const item of items) {
+    cum += item.net
+    points.push({ t: item.at.toISOString(), net: item.net, cumulative: cum })
+    if (item.marker) markers.push(item.marker)
+  }
+  return { points, markers }
 }
 
 export async function pnlByLabelInMonth(db: Db, kind: LabelKind, year: number, monthIndex1: number) {

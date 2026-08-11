@@ -76,6 +76,10 @@ const tradesForChart = computed((): JournalDayTrade[] => {
         exitPrice: number
         side: string
         net: number
+        analysisSections?: {
+          general: { system: boolean; technique: boolean; psychology: boolean }
+          ts: { system: boolean; technique: boolean; psychology: boolean }
+        }
       }) => ({
         id: t.id,
         entryAt: t.entryAt,
@@ -84,6 +88,7 @@ const tradesForChart = computed((): JournalDayTrade[] => {
         exitPrice: t.exitPrice,
         side: t.side as 'long' | 'short',
         net: t.net,
+        analysisSections: t.analysisSections,
       }),
     )
 })
@@ -164,6 +169,11 @@ async function saveNote() {
                 <template v-if="rrByTradeId.has(t.id)">
                   · RR {{ rrByTradeId.get(t.id)?.toFixed(2) }}
                 </template>
+                <AnalysisSectionBadges
+                  v-if="t.analysisSections"
+                  :sections="t.analysisSections"
+                  class="journal-an-badges"
+                />
                 <NuxtLink :to="`/trades/${t.id}`" class="trade-link">Открыть сделку</NuxtLink>
               </li>
             </ul>
@@ -330,6 +340,11 @@ async function saveNote() {
 }
 .journal-day__trade-sum li:last-child {
   margin-bottom: 0;
+}
+.journal-an-badges {
+  display: inline-flex;
+  margin-left: 0.35rem;
+  vertical-align: middle;
 }
 .journal-day__aside {
   display: flex;

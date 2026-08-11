@@ -13,6 +13,7 @@ import {
   bindSeriesMarkersLayoutSync,
   entryExitLabels,
   eventUnixSeconds,
+  fmtMarkerTime,
   sortBarsByTime,
 } from '#shared/tradeChartMarkers'
 import { chartProviderLabel, defaultChartMeta } from '#shared/chartMeta'
@@ -211,7 +212,7 @@ function draw() {
         price: t.entryPrice,
         color: MARKER.entry,
         shape: 'circle' as const,
-        text: labIn,
+        text: `${labIn} ${fmtMarkerTime(t.entryAt)}`,
       },
       {
         time: bt,
@@ -219,7 +220,7 @@ function draw() {
         price: t.exitPrice,
         color: MARKER.exit,
         shape: 'circle' as const,
-        text: labOut,
+        text: `${labOut} ${fmtMarkerTime(t.exitAt)}`,
       },
     )
   })
@@ -245,7 +246,7 @@ const errText = computed(() => {
 })
 
 watch(
-  () => [data.value?.bars, props.trades, props.height, tradesKey.value],
+  () => [data.value?.bars, tf.value, props.trades, props.height, tradesKey.value],
   async () => {
     await nextTick()
     draw()

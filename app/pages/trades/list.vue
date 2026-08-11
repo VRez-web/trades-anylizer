@@ -13,8 +13,13 @@ type TradeRow = {
   net: number
   rr: number | null
   analysisDone: boolean
+  analysisSections?: {
+    general: { system: boolean; technique: boolean; psychology: boolean }
+    ts: { system: boolean; technique: boolean; psychology: boolean }
+  }
   tradeSource?: TradeSource
   accountName?: string | null
+  mergedFrom?: { sourceIds?: number[] } | null
   quoteVolumeUsdt?: number | null
   labels?: LabelItem[]
 }
@@ -32,6 +37,8 @@ const LIST_FILTERS_KEY = 'trades-analyzer:list-filters'
 
 const route = useRoute()
 
+const { names: propAccountNames } = usePropAccountNames()
+
 const side = ref<'all' | 'long' | 'short'>('all')
 const result = ref<'all' | 'win' | 'loss'>('all')
 /** all — без фильтра; with/without — как в isAnalysisComplete (общий и/или ТС). */
@@ -42,6 +49,7 @@ const rrMin = ref('')
 const rrMax = ref('')
 const labelIds = ref<number[]>([])
 const tradeSource = ref<'all' | TradeSource>('all')
+const accountNameFilter = ref('')
 const sort = ref<'exit_desc' | 'exit_asc'>('exit_desc')
 
 const infoOpen = ref(false)
@@ -73,6 +81,7 @@ const query = computed(() => {
   if (rrMax.value !== '' && Number.isFinite(max)) q.rrMax = String(max)
   if (labelIds.value.length) q.labelIds = labelIds.value.join(',')
   if (tradeSource.value !== 'all') q.tradeSource = tradeSource.value
+  if (accountNameFilter.value.trim()) q.accountName = accountNameFilter.value.trim()
   return q
 })
 
@@ -194,6 +203,10 @@ onMounted(() => {
   const qSource = route.query.tradeSource
   if (qSource === 'live' || qSource === 'test' || qSource === 'prop') {
     tradeSource.value = qSource
+  }
+  const qAccount = route.query.accountName
+  if (typeof qAccount === 'string' && qAccount.trim()) {
+    accountNameFilter.value = qAccount.trim()
   }
   filtersReady.value = true
   saveFilters()
@@ -795,7 +808,16 @@ function fmtRr(v: number | null) {
             @keydown.enter.prevent="goTrade(t.id)"
           >
             <td class="t-exit">{{ fmtExit(t.exitAt) }}</td>
-            <td class="sym">{{ t.symbol }}</td>
+            <td class="sym">
+              {{ t.symbol }}
+              <span
+                v-if="t.mergedFrom?.sourceIds?.length"
+                class="merge-badge"
+                :title="`Объединено из ${t.mergedFrom.sourceIds.length} сделок`"
+              >
+                ×{{ t.mergedFrom.sourceIds.length }}
+              </span>
+            </td>
             <td>
               <template v-if="tradeSourceBadge(t.tradeSource)">
                 <span class="src-badge">{{ tradeSourceBadge(t.tradeSource) }}</span>
@@ -807,7 +829,11 @@ function fmtRr(v: number | null) {
             <td :class="t.net >= 0 ? 'pos' : 'neg'">{{ fmtUsdt(t.net) }}</td>
             <td>{{ t.rr == null ? '—' : t.rr.toFixed(2) }}</td>
             <td>
-              <span class="an" :class="t.analysisDone ? 'yes' : 'no'">{{
+              <AnalysisSectionBadges
+                v-if="t.analysisSections"
+                :sections="t.analysisSections"
+              />
+              <span v-else class="an" :class="t.analysisDone ? 'yes' : 'no'">{{
                 t.analysisDone ? 'да' : 'нет'
               }}</span>
             </td>
@@ -841,7 +867,13 @@ function fmtRr(v: number | null) {
           </label>
           <label v-if="addForm.tradeSource === 'prop'" class="fl">
             <span class="fl-l">Аккаунт пропа</span>
-            <input v-model="addForm.accountName" class="input" placeholder="FTMO 100k" />
+            <select v-model="addForm.accountName" class="input" :disabled="!propAccountNames.length">
+              <option value="" disabled>Выберите аккаунт</option>
+              <option v-for="n in propAccountNames" :key="n" :value="n">{{ n }}</option>
+            </select>
+            <span v-if="!propAccountNames.length" class="muted fl-hint">
+              Сначала добавьте проп на вкладке «Проп».
+            </span>
           </label>
           <label class="fl">
             <span class="fl-l">Сторона</span>
@@ -1048,6 +1080,17 @@ function fmtRr(v: number | null) {
 .sym {
   font-weight: 600;
   color: var(--accent);
+}
+.merge-badge {
+  display: inline-block;
+  margin-left: 0.25rem;
+  font-size: 0.62rem;
+  font-weight: 600;
+  color: var(--muted);
+  background: rgba(100, 116, 139, 0.12);
+  border-radius: 3px;
+  padding: 0 4px;
+  vertical-align: middle;
 }
 .src-badge {
   display: inline-block;

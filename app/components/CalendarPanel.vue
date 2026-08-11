@@ -16,6 +16,7 @@ const props = defineProps<{
   month: number
   days: Record<string, number>
   monthTradesCount?: number
+  dayMeta?: Record<string, { liveCount: number; propCount: number }>
   /** По дате yyyy-MM-dd: есть ли текст анализа дня и торгового плана (из журнала) */
   journalByDay?: Record<string, { analysis: boolean; plan: boolean }>
   /** Флаг анализа выбранного месяца (`period_notes.scope='month'`). */
@@ -88,11 +89,16 @@ const cells = computed(() => {
     } else {
       journalBadge = { text: '—', title: 'Нет плана и анализа', kind: 'empty' }
     }
+    const meta = props.dayMeta?.[key]
+    const liveCount = meta?.liveCount ?? 0
+    const propCount = meta?.propCount ?? 0
     return {
       key,
       dayNum: format(d, 'd'),
       inMonth,
       sum: v,
+      liveCount,
+      propCount,
       hasWeekAnalysis,
       journalBadge,
     }
@@ -239,12 +245,27 @@ function next() {
             <span v-if="c.inMonth && c.sum != null && c.sum !== 0" class="mini" :class="c.sum > 0 ? 'pos' : 'neg'">
               {{ fmtSignedUsdt(c.sum, 0) }}
             </span>
+            <span
+              v-else-if="c.inMonth && c.liveCount > 0"
+              class="trade-dot"
+              :title="`${c.liveCount} live-сделок, PnL ≈ 0`"
+            >
+              {{ c.liveCount }}
+            </span>
+            <span
+              v-if="c.inMonth && c.propCount > 0"
+              class="prop-badge"
+              :title="`${c.propCount} проп-сделок (не в live PnL)`"
+            >
+              P{{ c.propCount > 1 ? c.propCount : '' }}
+            </span>
           </button>
         </div>
       </div>
     </div>
     <p class="cal-legend muted">
-      П — план, А — анализ, П+А — оба заполнены, Н — анализ недели, М — анализ месяца (клик — журнал)
+      П — план, А — анализ, П+А — оба заполнены, Н — анализ недели, М — анализ месяца (клик — журнал).
+      Число — live-сделки без PnL; фиолетовый P — проп-сделки.
     </p>
   </div>
 </template>
@@ -444,6 +465,21 @@ function next() {
   font-size: 0.65rem;
   margin-top: 1px;
   line-height: 1.1;
+}
+.trade-dot {
+  font-size: 0.58rem;
+  color: var(--muted);
+  font-weight: 600;
+  line-height: 1.1;
+}
+.prop-badge {
+  font-size: 0.55rem;
+  font-weight: 700;
+  color: #6d28d9;
+  background: rgba(109, 40, 217, 0.12);
+  border-radius: 3px;
+  padding: 0 3px;
+  line-height: 1.2;
 }
 .jbadge {
   position: absolute;

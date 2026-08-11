@@ -12,6 +12,7 @@ const { data, refresh, pending, error } = await useFetch(() => `/api/trades/${id
 })
 
 const { fmtUsdt, fmtInstrumentPrice, fmtPriceMovePct } = useMoney()
+const { names: propAccountNames } = usePropAccountNames()
 const dayPlanOpen = ref(false)
 const dayPlanLoading = ref(false)
 const dayPlanText = ref('')
@@ -119,6 +120,8 @@ const form = reactive({
   funding: 0,
   entryNotionalUsdt: '' as string | number,
   rr: '' as string | number,
+  stopPrice: '' as string | number,
+  takeProfitPrice: '' as string | number,
   /** Один общий анализ → в API кладётся в note_system, остальные general-поля очищаются. */
   noteGeneral: '',
   noteSystemTs: '',
@@ -149,6 +152,27 @@ const chartMetaLive = computed(() =>
     marketCategory: form.marketCategory,
   }),
 )
+
+function parseFormPrice(v: string | number): number | null {
+  if (v === '' || v == null) return null
+  const n = Number(String(v).replace(',', '.'))
+  return Number.isFinite(n) ? n : null
+}
+
+const chartStopPrice = computed(() => parseFormPrice(form.stopPrice))
+const chartTakeProfitPrice = computed(() => parseFormPrice(form.takeProfitPrice))
+const rrStopStr = computed({
+  get: () => (form.stopPrice === '' || form.stopPrice == null ? '' : String(form.stopPrice)),
+  set: (v: string) => {
+    form.stopPrice = v
+  },
+})
+const rrTakeStr = computed({
+  get: () => (form.takeProfitPrice === '' || form.takeProfitPrice == null ? '' : String(form.takeProfitPrice)),
+  set: (v: string) => {
+    form.takeProfitPrice = v
+  },
+})
 
 function snapshotLabelIds(): string {
   const norm = (a: number[]) => [...a].sort((x, y) => x - y)
@@ -199,6 +223,8 @@ watch(
     form.funding = t.funding
     form.entryNotionalUsdt = t.entryNotionalUsdt ?? ''
     form.rr = t.rr ?? ''
+    form.stopPrice = t.stopPrice ?? ''
+    form.takeProfitPrice = t.takeProfitPrice ?? ''
     form.tradeSource = t.tradeSource === 'test' || t.tradeSource === 'prop' ? t.tradeSource : 'live'
     form.accountName = t.tradeSource === 'prop' ? (t.accountName ?? '') : ''
     const meta = resolveChartMeta(t.symbol, {
@@ -344,6 +370,8 @@ async function save() {
         method: 'PATCH',
         body: {
           rr: form.rr === '' ? null : Number(form.rr),
+          stopPrice: parseFormPrice(form.stopPrice),
+          takeProfitPrice: parseFormPrice(form.takeProfitPrice),
           noteSystem: form.noteGeneral.trim() || null,
           noteTechnique: null,
           noteAnalysis: null,
@@ -372,6 +400,8 @@ async function save() {
           funding: form.funding,
           entryNotionalUsdt: form.entryNotionalUsdt === '' ? null : Number(form.entryNotionalUsdt),
           rr: form.rr === '' ? null : Number(form.rr),
+          stopPrice: parseFormPrice(form.stopPrice),
+          takeProfitPrice: parseFormPrice(form.takeProfitPrice),
           noteSystem: form.noteGeneral.trim() || null,
           noteTechnique: null,
           noteAnalysis: null,
@@ -510,10 +540,14 @@ async function save() {
             :exit-at="data.trade.exitAt"
             :entry-price="data.trade.entryPrice"
             :exit-price="data.trade.exitPrice"
+            :stop-price="chartStopPrice"
+            :take-profit-price="chartTakeProfitPrice"
             :merge-legs="mergeLegsForChart"
             :height="300"
           />
           <TradeRrCalculator
+            v-model:stop-loss="rrStopStr"
+            v-model:take-profit="rrTakeStr"
             :side="data.trade.side"
             :entry-price="data.trade.entryPrice"
             :exit-price="form.exitPrice"
@@ -542,7 +576,10 @@ async function save() {
             </label>
             <label v-if="form.tradeSource === 'prop'" class="meta-rr-label">
               <span class="meta-lbl">Аккаунт пропа</span>
-              <input v-model="form.accountName" class="input input-tight" placeholder="FTMO 100k" />
+              <select v-model="form.accountName" class="input input-tight" :disabled="!propAccountNames.length">
+                <option value="" disabled>Выберите аккаунт</option>
+                <option v-for="n in propAccountNames" :key="n" :value="n">{{ n }}</option>
+              </select>
             </label>
             <span class="muted meta-rr-hint">можно взять с графика (блок «Расчёт RR»)</span>
           </div>

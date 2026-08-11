@@ -19,16 +19,42 @@ type PropStats = {
     eventsCount: number
     tradesCount: number
   }
-  series: { t: string; net: number; cumulative: number }[]
+}
+
+type PropTradeRow = {
+  id: number
+  symbol: string
+  exitAt: string
+  net: number
+  side: string
+  accountName?: string | null
 }
 
 const { fmtUsdt, fmtSignedUsdt } = useMoney()
+const { names: propAccountNames, refresh: refreshAccountNames } = usePropAccountNames()
+
+const selectedAccount = ref('')
 
 const { data: events, refresh: refreshEvents } = await useFetch<PropEvent[]>('/api/prop/events')
-const { data: stats, refresh: refreshStats } = await useFetch<PropStats>('/api/prop/stats')
+
+const statsUrl = computed(() => {
+  const base = '/api/prop/stats'
+  if (!selectedAccount.value) return base
+  return `${base}?accountName=${encodeURIComponent(selectedAccount.value)}`
+})
+const { data: stats, refresh: refreshStats } = await useFetch<PropStats>(statsUrl, { watch: [statsUrl] })
+
+const tradesUrl = computed(() => {
+  const q = new URLSearchParams({ tradeSource: 'prop', sort: 'exit_desc' })
+  if (selectedAccount.value) q.set('accountName', selectedAccount.value)
+  return `/api/trades?${q}`
+})
+const { data: propTrades, refresh: refreshTrades } = await useFetch<PropTradeRow[]>(tradesUrl, {
+  watch: [tradesUrl],
+})
 
 async function refreshAll() {
-  await Promise.all([refreshEvents(), refreshStats()])
+  await Promise.all([refreshEvents(), refreshStats(), refreshTrades(), refreshAccountNames()])
 }
 
 const addOpen = ref(false)
@@ -48,7 +74,7 @@ function isoLocal(d: Date) {
 
 function openAdd() {
   addForm.kind = 'purchase'
-  addForm.accountName = ''
+  addForm.accountName = selectedAccount.value || ''
   addForm.amountUsdt = ''
   addForm.eventAt = isoLocal(new Date())
   addForm.note = ''
@@ -95,14 +121,16 @@ function kindLabel(kind: PropEvent['kind']) {
   return kind === 'purchase' ? 'Покупка' : 'Выплата'
 }
 
-const equityPoints = computed(() => {
-  return (stats.value?.series ?? []).map((p) => ({ t: p.t, cumulative: p.cumulative }))
+const filteredEvents = computed(() => {
+  const list = events.value ?? []
+  if (!selectedAccount.value) return list
+  return list.filter((e) => e.accountName === selectedAccount.value)
 })
 
-const accountNames = computed(() => {
-  const set = new Set<string>()
-  for (const e of events.value ?? []) set.add(e.accountName)
-  return [...set].sort()
+const listLink = computed(() => {
+  const q = new URLSearchParams({ tradeSource: 'prop' })
+  if (selectedAccount.value) q.set('accountName', selectedAccount.value)
+  return `/trades/list?${q}`
 })
 </script>
 
@@ -114,9 +142,17 @@ const accountNames = computed(() => {
     </div>
 
     <p class="muted lead">
-      Покупки и выплаты проп-счетов учитываются отдельно. Сделки с источником «Проп» не попадают в основную кривую
-      доходности на странице «Сделки».
+      Покупки и выплаты отображаются на основной кривой доходности (страница «Сделки»). Торговый PnL проп-сделок
+      учитывается только здесь.
     </p>
+
+    <label class="account-filter">
+      <span class="account-filter-lbl">Аккаунт</span>
+      <select v-model="selectedAccount" class="input">
+        <option value="">Все аккаунты</option>
+        <option v-for="n in propAccountNames" :key="n" :value="n">{{ n }}</option>
+      </select>
+    </label>
 
     <div v-if="stats?.summary" class="summary-grid">
       <div class="card summary-tile">
@@ -149,43 +185,62 @@ const accountNames = computed(() => {
       </div>
     </div>
 
-    <div class="card chart-block">
-      <h2 class="block-h">Кривая денежных потоков</h2>
-      <p class="muted block-note">Только покупки и выплаты (без торгового PnL).</p>
-      <ClientOnly>
-        <EquityChart v-if="equityPoints.length" :points="equityPoints" />
-        <p v-else class="muted">Пока нет записей — добавьте покупку или выплату.</p>
-      </ClientOnly>
+    <div class="card">
+      <div class="block-head">
+        <h2 class="block-h">Сделки</h2>
+        <NuxtLink :to="listLink" class="btn btn-tiny">Открыть в списке</NuxtLink>
+      </div>
+      <div v-if="!propTrades?.length" class="muted">Нет проп-сделок</div>
+      <div v-else class="table-wrap">
+        <table class="tbl">
+          <thead>
+            <tr>
+              <th>Выход</th>
+              <th>Тикер</th>
+              <th v-if="!selectedAccount">Аккаунт</th>
+              <th>Сторона</th>
+              <th>Чистый</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="t in propTrades" :key="t.id">
+              <td class="t-when">{{ fmtWhen(t.exitAt) }}</td>
+              <td>
+                <NuxtLink :to="`/trades/${t.id}`" class="sym-link">{{ t.symbol }}</NuxtLink>
+              </td>
+              <td v-if="!selectedAccount">{{ t.accountName || '—' }}</td>
+              <td>{{ t.side === 'long' ? 'Long' : 'Short' }}</td>
+              <td :class="t.net >= 0 ? 'pos' : 'neg'">{{ fmtSignedUsdt(t.net) }}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
     </div>
 
     <div class="card">
       <div class="block-head">
-        <h2 class="block-h">Записи</h2>
-        <NuxtLink to="/trades/list?tradeSource=prop" class="btn btn-tiny">Проп-сделки в списке</NuxtLink>
+        <h2 class="block-h">Покупки и выплаты</h2>
       </div>
-      <p v-if="accountNames.length" class="muted accounts-line">
-        Аккаунты: {{ accountNames.join(', ') }}
-      </p>
-      <div v-if="!events?.length" class="muted">Нет записей</div>
+      <div v-if="!filteredEvents.length" class="muted">Нет записей</div>
       <div v-else class="table-wrap">
         <table class="tbl">
           <thead>
             <tr>
               <th>Дата</th>
               <th>Тип</th>
-              <th>Аккаунт</th>
+              <th v-if="!selectedAccount">Аккаунт</th>
               <th>Сумма</th>
               <th>Комментарий</th>
               <th></th>
             </tr>
           </thead>
           <tbody>
-            <tr v-for="e in events" :key="e.id">
+            <tr v-for="e in filteredEvents" :key="e.id">
               <td class="t-when">{{ fmtWhen(e.eventAt) }}</td>
               <td>
                 <span class="kind-badge" :class="`kind-badge--${e.kind}`">{{ kindLabel(e.kind) }}</span>
               </td>
-              <td>{{ e.accountName }}</td>
+              <td v-if="!selectedAccount">{{ e.accountName }}</td>
               <td :class="e.signedUsdt >= 0 ? 'pos' : 'neg'">{{ fmtSignedUsdt(e.signedUsdt) }}</td>
               <td class="note-cell">{{ e.note || '—' }}</td>
               <td>
@@ -210,7 +265,15 @@ const accountNames = computed(() => {
           </label>
           <label class="fl">
             <span class="fl-l">Аккаунт</span>
-            <input v-model="addForm.accountName" class="input" placeholder="FTMO 100k" />
+            <input
+              v-model="addForm.accountName"
+              class="input"
+              placeholder="FTMO 100k"
+              list="prop-account-datalist"
+            />
+            <datalist id="prop-account-datalist">
+              <option v-for="n in propAccountNames" :key="n" :value="n" />
+            </datalist>
           </label>
           <label class="fl">
             <span class="fl-l">Сумма, USDT</span>
@@ -258,6 +321,22 @@ const accountNames = computed(() => {
   line-height: 1.45;
   max-width: 42rem;
 }
+.account-filter {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+}
+.account-filter-lbl {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--muted);
+}
+.account-filter .input {
+  min-width: 12rem;
+}
 .summary-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
@@ -282,17 +361,12 @@ const accountNames = computed(() => {
   margin-top: 0.2rem;
   font-size: 0.72rem;
 }
-.chart-block {
-  margin-bottom: 1rem;
-  padding: 0.85rem 1rem;
+.card + .card {
+  margin-top: 1rem;
 }
 .block-h {
   margin: 0 0 0.35rem;
   font-size: 1rem;
-}
-.block-note {
-  margin: 0 0 0.75rem;
-  font-size: 0.8125rem;
 }
 .block-head {
   display: flex;
@@ -304,10 +378,6 @@ const accountNames = computed(() => {
 }
 .block-head .block-h {
   margin: 0;
-}
-.accounts-line {
-  margin: 0 0 0.65rem;
-  font-size: 0.8125rem;
 }
 .table-wrap {
   overflow-x: auto;
@@ -328,6 +398,14 @@ const accountNames = computed(() => {
   white-space: nowrap;
   font-variant-numeric: tabular-nums;
   font-size: 0.8125rem;
+}
+.sym-link {
+  color: inherit;
+  text-decoration: none;
+  font-weight: 600;
+}
+.sym-link:hover {
+  text-decoration: underline;
 }
 .note-cell {
   max-width: 14rem;

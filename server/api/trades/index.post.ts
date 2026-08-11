@@ -43,6 +43,8 @@ function parseBody(body: Record<string, unknown>) {
     funding: num(body.funding),
     entryNotionalUsdt: numOrNull(body.entryNotionalUsdt),
     rr: body.rr != null && body.rr !== '' ? num(body.rr) : null,
+    stopPrice: numOrNull(body.stopPrice),
+    takeProfitPrice: numOrNull(body.takeProfitPrice),
     noteSystem: body.noteSystem != null ? String(body.noteSystem) : null,
     noteTechnique: body.noteTechnique != null ? String(body.noteTechnique) : null,
     noteAnalysis: body.noteAnalysis != null ? String(body.noteAnalysis) : null,

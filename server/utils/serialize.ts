@@ -64,6 +64,21 @@ export function parseMergedFrom(raw: string | null | undefined): MergedFromParse
   }
 }
 
+function analysisSectionsFor(t: TradeRow) {
+  return {
+    general: {
+      system: (t.noteSystem ?? '').trim().length > 0,
+      technique: (t.noteTechnique ?? '').trim().length > 0,
+      psychology: (t.noteAnalysis ?? '').trim().length > 0,
+    },
+    ts: {
+      system: (t.noteSystemTs ?? '').trim().length > 0,
+      technique: (t.noteTechniqueTs ?? '').trim().length > 0,
+      psychology: (t.noteAnalysisTs ?? '').trim().length > 0,
+    },
+  }
+}
+
 export function serializeTrade(t: TradeRow) {
   return {
     id: t.id,
@@ -82,6 +97,8 @@ export function serializeTrade(t: TradeRow) {
     funding: t.funding,
     entryNotionalUsdt: t.entryNotionalUsdt,
     rr: t.rr,
+    stopPrice: t.stopPrice,
+    takeProfitPrice: t.takeProfitPrice,
     noteSystem: t.noteSystem,
     noteTechnique: t.noteTechnique,
     noteAnalysis: t.noteAnalysis,
@@ -98,6 +115,7 @@ export function serializeTrade(t: TradeRow) {
     analysisDone: isAnalysisComplete(t),
     generalAnalysisDone: isGeneralAnalysisComplete(t),
     tsAnalysisDone: isTsAnalysisComplete(t),
+    analysisSections: analysisSectionsFor(t),
     createdAt: t.createdAt.toISOString(),
     updatedAt: t.updatedAt.toISOString(),
     net: netProfit(t),

@@ -65,6 +65,15 @@ export function sideLetter(side: 'long' | 'short'): string {
   return side === 'long' ? 'л' : 'ш'
 }
 
+/** Краткое локальное время для подписи маркера (фактическое время события). */
+export function fmtMarkerTime(iso: string): string {
+  return new Date(iso).toLocaleTimeString('ru-RU', {
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  })
+}
+
 /** Подпись входа/выхода: Вх1·л / Вых2·ш */
 export function entryExitLabels(index1: number, side: 'long' | 'short') {
   const s = sideLetter(side)

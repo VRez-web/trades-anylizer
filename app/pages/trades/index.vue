@@ -44,11 +44,23 @@ const byLabelUrl = computed(
 const { data: byLabel } = await useFetch(byLabelUrl)
 
 const equityPoints = computed(() => {
-  if (!equity.value) return []
-  return equity.value.map((p: { t: string; cumulative: number }) => ({
+  const raw = equity.value
+  if (!raw || !('points' in raw) || !Array.isArray(raw.points)) return []
+  return raw.points.map((p: { t: string; cumulative: number }) => ({
     t: p.t,
     cumulative: p.cumulative,
   }))
+})
+
+const equityMarkers = computed(() => {
+  const raw = equity.value
+  if (!raw || !('markers' in raw) || !Array.isArray(raw.markers)) return []
+  return raw.markers as {
+    t: string
+    kind: 'purchase' | 'payout'
+    accountName: string
+    amountUsdt: number
+  }[]
 })
 
 const systemRows = computed(() => {
@@ -87,6 +99,7 @@ function goDay(date: string) {
         :year="year"
         :month="month"
         :days="calendar?.days ?? {}"
+        :day-meta="calendar?.dayMeta ?? {}"
         :month-trades-count="calendar?.monthTradesCount ?? 0"
         :journal-by-day="calendar?.journalByDay ?? {}"
         :journal-month-analysis="calendar?.journalMonthAnalysis === true"
@@ -108,14 +121,24 @@ function goDay(date: string) {
 
     <div class="card" style="margin-top: 1rem">
       <h2>Кривая доходности</h2>
-      <p class="muted bars-caption">Только live-сделки; проп не учитывается.</p>
+      <p class="muted bars-caption">
+        Live/test PnL и денежный поток пропов (покупки и выплаты). Торговый PnL проп-сделок не включён.
+      </p>
       <ClientOnly>
-        <EquityChart v-if="equityPoints.length" :points="equityPoints" />
+        <EquityChart
+          v-if="equityPoints.length"
+          :points="equityPoints"
+          :markers="equityMarkers"
+        />
         <template #fallback>
           <div class="muted" style="padding: 2rem">Загрузка графика…</div>
         </template>
       </ClientOnly>
       <p v-if="equityPoints.length === 0" class="muted">Пока нет закрытых сделок</p>
+      <div v-if="equityMarkers.length" class="eq-legend">
+        <span class="eq-legend-item"><span class="eq-dot eq-dot--purchase" /> Покупка проп-счёта</span>
+        <span class="eq-legend-item"><span class="eq-dot eq-dot--payout" /> Выплата с пропа</span>
+      </div>
     </div>
   </div>
 </template>
@@ -133,5 +156,29 @@ function goDay(date: string) {
   display: grid;
   grid-template-columns: 1fr;
   gap: 1rem;
+}
+.eq-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem 1.25rem;
+  margin-top: 0.65rem;
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+.eq-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+.eq-dot {
+  width: 0.55rem;
+  height: 0.55rem;
+  border-radius: 50%;
+}
+.eq-dot--purchase {
+  background: #b91c1c;
+}
+.eq-dot--payout {
+  background: #15803d;
 }
 </style>

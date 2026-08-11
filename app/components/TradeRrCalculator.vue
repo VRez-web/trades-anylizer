@@ -6,19 +6,19 @@ const props = defineProps<{
   exitPrice?: number | null
 }>()
 
+const stopLoss = defineModel<string>('stopLoss', { default: '' })
+const takeProfit = defineModel<string>('takeProfit', { default: '' })
+
 const emit = defineEmits<{
   'apply-rr': [rr: number]
 }>()
-
-const stopLoss = ref('')
-const takeProfit = ref('')
 
 const { fmtInstrumentPrice } = useMoney()
 
 watch(
   () => props.exitPrice,
   (exit) => {
-    if (typeof exit === 'number' && Number.isFinite(exit) && exit !== 0) {
+    if (typeof exit === 'number' && Number.isFinite(exit) && exit !== 0 && !takeProfit.value.trim()) {
       takeProfit.value = String(exit)
     }
   },
@@ -60,7 +60,7 @@ function apply() {
       <template v-else>
         Short: TP &lt; вход &lt; SL. Риск = SL − вход, награда = вход − TP.
       </template>
-      Тейк по умолчанию — цена выхода сделки; можно заменить для расчёта планового RR.
+      Стоп и тейк сохраняются в сделке и отображаются на графике.
     </p>
     <div class="rr-grid">
       <label class="lbl">

@@ -66,6 +66,8 @@ export const trades = pgTable(
     funding: doublePrecision('funding').notNull(),
     entryNotionalUsdt: doublePrecision('entry_notional_usdt'),
     rr: doublePrecision('rr'),
+    stopPrice: doublePrecision('stop_price'),
+    takeProfitPrice: doublePrecision('take_profit_price'),
     noteSystem: text('note_system'),
     noteTechnique: text('note_technique'),
     noteAnalysis: text('note_analysis'),

@@ -1,5 +1,15 @@
 import type { TradeRow } from './tradeMath'
+import type { ChartProvider, TradeSource } from '../database/schema'
 import { buildMergedFromJson, sourceExternalKeysFromRows } from './mergedTradeSync'
+
+function pickIfUniform<T>(rows: TradeRow[], pick: (r: TradeRow) => T, fallback: T): T {
+  if (!rows.length) return fallback
+  const first = pick(rows[0])
+  for (let i = 1; i < rows.length; i++) {
+    if (pick(rows[i]) !== first) return fallback
+  }
+  return first
+}
 
 function mergeNoteField(rows: TradeRow[], pick: (r: TradeRow) => string | null): string | null {
   const parts: string[] = []
@@ -31,6 +41,11 @@ export type MergedTradePayload = {
   noteAnalysisTs: string | null
   externalKey: string
   mergedFrom: string
+  tradeSource: TradeSource
+  accountName: string | null
+  chartSymbol: string | null
+  marketCategory: string | null
+  chartProvider: ChartProvider
   createdAt: Date
   updatedAt: Date
 }
@@ -114,6 +129,11 @@ export function buildMergedTradePayload(rows: TradeRow[], now: Date): MergedTrad
     noteAnalysisTs: mergeNoteField(rows, (r) => r.noteAnalysisTs),
     externalKey,
     mergedFrom,
+    tradeSource: pickIfUniform(rows, (r) => r.tradeSource ?? 'live', 'live'),
+    accountName: pickIfUniform(rows, (r) => r.accountName ?? null, null),
+    chartSymbol: pickIfUniform(rows, (r) => r.chartSymbol ?? r.symbol, rows[0].chartSymbol ?? rows[0].symbol),
+    marketCategory: pickIfUniform(rows, (r) => r.marketCategory ?? 'linear', 'linear'),
+    chartProvider: pickIfUniform(rows, (r) => r.chartProvider ?? 'bybit', 'bybit'),
     createdAt,
     updatedAt: now,
   }

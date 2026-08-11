@@ -1,4 +1,4 @@
-import { asc, eq } from 'drizzle-orm'
+import { asc, eq, and } from 'drizzle-orm'
 import { propEvents, trades, type PropEventKind } from '../database/schema'
 import type { AppDatabase } from '../types/app-database'
 import { selectTradesExcludingMergedOrphans } from './mergedTradeSync'
@@ -46,8 +46,11 @@ export async function propCashflowSeries(db: Db) {
   })
 }
 
-export async function propSummary(db: Db) {
-  const events = await db.select().from(propEvents).orderBy(asc(propEvents.eventAt))
+export async function propSummary(db: Db, accountName?: string) {
+  const eventsQuery = accountName
+    ? db.select().from(propEvents).where(eq(propEvents.accountName, accountName)).orderBy(asc(propEvents.eventAt))
+    : db.select().from(propEvents).orderBy(asc(propEvents.eventAt))
+  const events = await eventsQuery
   let purchasesTotal = 0
   let payoutsTotal = 0
   for (const e of events) {
@@ -56,7 +59,14 @@ export async function propSummary(db: Db) {
     else payoutsTotal += n
   }
 
-  const rawTrades = await db.select().from(trades).where(eq(trades.tradeSource, 'prop')).orderBy(asc(trades.exitAt))
+  const tradesQuery = accountName
+    ? db
+        .select()
+        .from(trades)
+        .where(and(eq(trades.tradeSource, 'prop'), eq(trades.accountName, accountName)))
+        .orderBy(asc(trades.exitAt))
+    : db.select().from(trades).where(eq(trades.tradeSource, 'prop')).orderBy(asc(trades.exitAt))
+  const rawTrades = await tradesQuery
   const propTrades = await selectTradesExcludingMergedOrphans(db, rawTrades)
   const tradesNet = propTrades.reduce((s, t) => s + netProfit(t), 0)
 
@@ -69,4 +79,14 @@ export async function propSummary(db: Db) {
     eventsCount: events.length,
     tradesCount: propTrades.length,
   }
+}
+
+export async function propAccountNames(db: Db) {
+  const rows = await db.select({ accountName: propEvents.accountName }).from(propEvents)
+  const set = new Set<string>()
+  for (const r of rows) {
+    const n = r.accountName.trim()
+    if (n) set.add(n)
+  }
+  return [...set].sort((a, b) => a.localeCompare(b, 'ru'))
 }
