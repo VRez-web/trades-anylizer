@@ -39,6 +39,8 @@ const route = useRoute()
 
 const { names: propAccountNames } = usePropAccountNames()
 
+const importOpen = ref(false)
+
 const side = ref<'all' | 'long' | 'short'>('all')
 const result = ref<'all' | 'win' | 'loss'>('all')
 /** all — без фильтра; with/without — как в isAnalysisComplete (общий и/или ТС). */
@@ -524,7 +526,17 @@ function fmtRr(v: number | null) {
     <div class="head-row">
       <NuxtLink to="/trades" class="btn">← Календарь</NuxtLink>
       <h1 class="title">Все сделки</h1>
-      <button type="button" class="btn btn-primary" @click="openAddTrade">+ Добавить сделку</button>
+      <div class="head-actions">
+        <button
+          v-if="tradeSource === 'prop'"
+          type="button"
+          class="btn"
+          @click="importOpen = true"
+        >
+          Импорт FundingPips
+        </button>
+        <button type="button" class="btn btn-primary" @click="openAddTrade">+ Добавить сделку</button>
+      </div>
     </div>
 
     <div class="card filters">
@@ -931,6 +943,12 @@ function fmtRr(v: number | null) {
         </div>
       </div>
     </div>
+
+    <FundingPipsImportModal
+      v-model:open="importOpen"
+      :account-names="propAccountNames"
+      @imported="refresh()"
+    />
   </div>
 </template>
 
@@ -944,6 +962,12 @@ function fmtRr(v: number | null) {
   align-items: center;
   gap: 0.75rem;
   margin-bottom: 1rem;
+}
+.head-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-left: auto;
 }
 .title {
   margin: 0;

@@ -132,13 +132,18 @@ const listLink = computed(() => {
   if (selectedAccount.value) q.set('accountName', selectedAccount.value)
   return `/trades/list?${q}`
 })
+
+const importOpen = ref(false)
 </script>
 
 <template>
   <div class="page prop-page">
     <div class="head-row">
       <h1 class="title">Проп-аккаунты</h1>
-      <button type="button" class="btn btn-primary" @click="openAdd">+ Покупка / выплата</button>
+      <div class="head-actions">
+        <button type="button" class="btn" @click="importOpen = true">Импорт FundingPips</button>
+        <button type="button" class="btn btn-primary" @click="openAdd">+ Покупка / выплата</button>
+      </div>
     </div>
 
     <p class="muted lead">
@@ -296,6 +301,13 @@ const listLink = computed(() => {
         </div>
       </div>
     </div>
+
+    <FundingPipsImportModal
+      v-model:open="importOpen"
+      :account-names="propAccountNames"
+      :default-account="selectedAccount"
+      @imported="refreshAll"
+    />
   </div>
 </template>
 
@@ -310,6 +322,11 @@ const listLink = computed(() => {
   justify-content: space-between;
   gap: 0.75rem;
   margin-bottom: 0.5rem;
+}
+.head-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
 }
 .title {
   margin: 0;

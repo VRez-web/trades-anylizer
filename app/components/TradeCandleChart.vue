@@ -43,6 +43,7 @@ const props = withDefaults(
     chartProvider?: 'bybit' | 'yahoo'
     stopPrice?: number | null
     takeProfitPrice?: number | null
+    actualRr?: number | null
   }>(),
   { side: 'long', height: 380, marketCategory: 'linear', chartProvider: 'bybit' },
 )
@@ -213,7 +214,7 @@ function draw() {
       lineWidth: 2,
       lineStyle: LineStyle.Dotted,
       axisLabelVisible: true,
-      title: 'TP',
+      title: 'TP (план)',
     })
   }
 
@@ -269,7 +270,11 @@ function draw() {
   } else {
     const { entry: labIn, exit: labOut } = entryExitLabels(1, props.side)
     const inLabel = `${labIn} ${fmtMarkerTime(props.entryAt)}`
-    const outLabel = `${labOut} ${fmtMarkerTime(props.exitAt)}`
+    const rrSuffix =
+      props.actualRr != null && Number.isFinite(props.actualRr)
+        ? ` RR ${props.actualRr.toFixed(2)}`
+        : ''
+    const outLabel = `${labOut} ${fmtMarkerTime(props.exitAt)}${rrSuffix}`
     series.createPriceLine({
       price: props.entryPrice,
       color: MARKER.entry,
@@ -280,11 +285,11 @@ function draw() {
     })
     series.createPriceLine({
       price: props.exitPrice,
-      color: MARKER.exit,
+      color: '#64748b',
       lineWidth: 2,
       lineStyle: LineStyle.Dashed,
       axisLabelVisible: true,
-      title: 'Выход',
+      title: 'Выход (факт)',
     })
     const tEntry = eventUnixSeconds(props.entryAt)
     const tExit = eventUnixSeconds(props.exitAt)
@@ -362,6 +367,7 @@ watch(
     props.exitPrice,
     props.stopPrice,
     props.takeProfitPrice,
+    props.actualRr,
     props.entryAt,
     props.exitAt,
     props.height,

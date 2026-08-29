@@ -63,6 +63,25 @@ const equityMarkers = computed(() => {
   }[]
 })
 
+const equityEventsSorted = computed(() =>
+  [...equityMarkers.value].sort((a, b) => new Date(b.t).getTime() - new Date(a.t).getTime()),
+)
+
+const { fmtUsdt } = useMoney()
+
+function fmtPropEventAmount(kind: 'purchase' | 'payout', amount: number) {
+  const n = Math.abs(amount)
+  return kind === 'purchase' ? `−${fmtUsdt(n)}` : `+${fmtUsdt(n)}`
+}
+
+function fmtPropEventWhen(iso: string) {
+  return new Date(iso).toLocaleString('ru-RU', { dateStyle: 'short', timeStyle: 'short' })
+}
+
+function propEventKindLabel(kind: 'purchase' | 'payout') {
+  return kind === 'purchase' ? 'Покупка' : 'Выплата'
+}
+
 const systemRows = computed(() => {
   if (!byLabel.value?.system) return []
   return byLabel.value.system.map((r: { label: string; sum: number }) => ({
@@ -139,6 +158,16 @@ function goDay(date: string) {
         <span class="eq-legend-item"><span class="eq-dot eq-dot--purchase" /> Покупка проп-счёта</span>
         <span class="eq-legend-item"><span class="eq-dot eq-dot--payout" /> Выплата с пропа</span>
       </div>
+      <ul v-if="equityEventsSorted.length" class="eq-events">
+        <li v-for="(m, i) in equityEventsSorted" :key="`${m.t}-${m.kind}-${i}`" class="eq-event">
+          <span class="eq-event-kind" :class="`eq-event-kind--${m.kind}`">{{ propEventKindLabel(m.kind) }}</span>
+          <span class="eq-event-account">{{ m.accountName }}</span>
+          <span class="eq-event-amt" :class="m.kind === 'payout' ? 'pos' : 'neg'">{{
+            fmtPropEventAmount(m.kind, m.amountUsdt)
+          }}</span>
+          <span class="eq-event-when muted">{{ fmtPropEventWhen(m.t) }}</span>
+        </li>
+      </ul>
     </div>
   </div>
 </template>
@@ -180,5 +209,44 @@ function goDay(date: string) {
 }
 .eq-dot--payout {
   background: #15803d;
+}
+.eq-events {
+  list-style: none;
+  margin: 0.75rem 0 0;
+  padding: 0;
+  border-top: 1px solid var(--border);
+}
+.eq-event {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.35rem 0.65rem;
+  padding: 0.4rem 0;
+  border-bottom: 1px solid var(--border);
+  font-size: 0.8125rem;
+}
+.eq-event-kind {
+  font-size: 0.68rem;
+  font-weight: 600;
+  padding: 1px 5px;
+  border-radius: 3px;
+}
+.eq-event-kind--purchase {
+  color: #b91c1c;
+  background: rgba(185, 28, 28, 0.08);
+}
+.eq-event-kind--payout {
+  color: #166534;
+  background: rgba(22, 101, 52, 0.08);
+}
+.eq-event-account {
+  font-weight: 600;
+}
+.eq-event-amt {
+  font-variant-numeric: tabular-nums;
+}
+.eq-event-when {
+  margin-left: auto;
+  font-size: 0.75rem;
 }
 </style>

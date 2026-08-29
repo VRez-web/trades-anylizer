@@ -1,8 +1,9 @@
 <script setup lang="ts">
+import { calcRr, formatRr } from '#shared/tradeRr'
+
 const props = defineProps<{
   side: 'long' | 'short'
   entryPrice: number
-  /** Цена фактического выхода — подставляется в «Тейк»; поле можно поменять для «что если». */
   exitPrice?: number | null
 }>()
 
@@ -14,16 +15,6 @@ const emit = defineEmits<{
 }>()
 
 const { fmtInstrumentPrice } = useMoney()
-
-watch(
-  () => props.exitPrice,
-  (exit) => {
-    if (typeof exit === 'number' && Number.isFinite(exit) && exit !== 0 && !takeProfit.value.trim()) {
-      takeProfit.value = String(exit)
-    }
-  },
-  { immediate: true },
-)
 
 const parsed = computed(() => {
   const e = props.entryPrice
@@ -44,6 +35,13 @@ const parsed = computed(() => {
   return { rr: reward / risk, risk, reward }
 })
 
+const actualRr = computed(() => {
+  const sl = parseFloat(stopLoss.value.replace(',', '.'))
+  const exit = props.exitPrice
+  if (!Number.isFinite(sl) || typeof exit !== 'number' || !Number.isFinite(exit)) return null
+  return calcRr(props.side, props.entryPrice, sl, exit)
+})
+
 function apply() {
   const p = parsed.value
   if (p && 'rr' in p && typeof p.rr === 'number') emit('apply-rr', Math.round(p.rr * 1000) / 1000)
@@ -55,12 +53,11 @@ function apply() {
     <h4 class="rr-title">Расчёт RR</h4>
     <p class="muted rr-hint">
       <template v-if="side === 'long'">
-        Long: SL &lt; вход &lt; TP. Риск = вход − SL, награда = TP − вход.
+        Long: SL &lt; вход &lt; TP (план). Фактический выход может отличаться от TP.
       </template>
       <template v-else>
-        Short: TP &lt; вход &lt; SL. Риск = SL − вход, награда = вход − TP.
+        Short: TP (план) &lt; вход &lt; SL. Фактический выход может отличаться от TP.
       </template>
-      Стоп и тейк сохраняются в сделке и отображаются на графике.
     </p>
     <div class="rr-grid">
       <label class="lbl">
@@ -68,21 +65,37 @@ function apply() {
         <input v-model="stopLoss" class="input input-compact" type="text" inputmode="decimal" placeholder="—" />
       </label>
       <label class="lbl">
-        <span class="lbl-t">Тейк (цена)</span>
+        <span class="lbl-t">Тейк план (цена)</span>
         <input v-model="takeProfit" class="input input-compact" type="text" inputmode="decimal" placeholder="—" />
       </label>
     </div>
     <p class="entry-line muted">
       Вход: <strong>{{ fmtInstrumentPrice(entryPrice) }}</strong>
       · {{ side === 'long' ? 'Long' : 'Short' }}
+      <template v-if="typeof exitPrice === 'number' && Number.isFinite(exitPrice)">
+        · выход факт: <strong>{{ fmtInstrumentPrice(exitPrice) }}</strong>
+      </template>
     </p>
     <div v-if="parsed && 'err' in parsed" class="err">{{ parsed.err }}</div>
-    <div v-else-if="parsed && 'rr' in parsed" class="out">
-      <span class="muted">RR ≈</span>
-      <strong class="rr-val">{{ parsed.rr.toFixed(3) }}</strong>
-      <button type="button" class="btn btn-tiny" @click="apply">В поле RR сделки</button>
+    <div v-else class="out">
+      <span v-if="parsed && 'rr' in parsed" class="rr-chip">
+        <span class="muted">RR план</span>
+        <strong>{{ formatRr(parsed.rr, 3) }}</strong>
+      </span>
+      <span v-if="actualRr != null" class="rr-chip">
+        <span class="muted">RR факт</span>
+        <strong>{{ formatRr(actualRr, 3) }}</strong>
+      </span>
+      <button
+        v-if="parsed && 'rr' in parsed"
+        type="button"
+        class="btn btn-tiny"
+        @click="apply"
+      >
+        RR план → поле сделки
+      </button>
     </div>
-    <p v-else class="muted tiny">Введите стоп и тейк в ценах инструмента.</p>
+    <p v-if="!stopLoss.trim() && !takeProfit.trim()" class="muted tiny">Введите стоп и плановый тейк.</p>
   </div>
 </template>
 
@@ -141,8 +154,10 @@ function apply() {
   margin-top: 0.45rem;
   font-size: 0.85rem;
 }
-.rr-val {
-  font-variant-numeric: tabular-nums;
+.rr-chip {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.35rem;
 }
 .tiny {
   margin: 0.35rem 0 0;

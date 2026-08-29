@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { resolveChartMeta, type ChartMeta } from '#shared/chartMeta'
+import { calcRr, formatRr } from '#shared/tradeRr'
 import { tradeNoteHints } from '#shared/tradeNoteHints'
 import { estimateQuoteVolumeUsdt } from '#shared/tradeQuoteVolume'
 
@@ -172,6 +173,19 @@ const rrTakeStr = computed({
   set: (v: string) => {
     form.takeProfitPrice = v
   },
+})
+
+const plannedRr = computed(() => {
+  const sl = chartStopPrice.value
+  const tp = chartTakeProfitPrice.value
+  if (sl == null || tp == null) return null
+  return calcRr(form.side, form.entryPrice, sl, tp)
+})
+
+const actualRr = computed(() => {
+  const sl = chartStopPrice.value
+  if (sl == null || !Number.isFinite(form.exitPrice)) return null
+  return calcRr(form.side, form.entryPrice, sl, form.exitPrice)
 })
 
 function snapshotLabelIds(): string {
@@ -542,9 +556,28 @@ async function save() {
             :exit-price="data.trade.exitPrice"
             :stop-price="chartStopPrice"
             :take-profit-price="chartTakeProfitPrice"
+            :actual-rr="actualRr"
             :merge-legs="mergeLegsForChart"
             :height="300"
           />
+          <div v-if="plannedRr != null || actualRr != null" class="rr-summary">
+            <span v-if="plannedRr != null" class="rr-summary-item">
+              <span class="muted">RR план</span>
+              <strong>{{ formatRr(plannedRr, 2) }}</strong>
+            </span>
+            <span v-if="actualRr != null" class="rr-summary-item">
+              <span class="muted">RR факт</span>
+              <strong>{{ formatRr(actualRr, 2) }}</strong>
+            </span>
+            <span v-if="chartTakeProfitPrice != null" class="rr-summary-item">
+              <span class="muted">TP план</span>
+              <strong>{{ fmtInstrumentPrice(chartTakeProfitPrice) }}</strong>
+            </span>
+            <span class="rr-summary-item">
+              <span class="muted">Выход факт</span>
+              <strong>{{ fmtInstrumentPrice(data.trade.exitPrice) }}</strong>
+            </span>
+          </div>
           <TradeRrCalculator
             v-model:stop-loss="rrStopStr"
             v-model:take-profit="rrTakeStr"
@@ -861,6 +894,20 @@ async function save() {
 }
 .chart-card {
   padding: 0.65rem 0.9rem 0.85rem;
+}
+.rr-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1.25rem;
+  margin-top: 0.65rem;
+  padding-top: 0.55rem;
+  border-top: 1px solid var(--border);
+  font-size: 0.8125rem;
+}
+.rr-summary-item {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.35rem;
 }
 .sum-line {
   display: flex;
