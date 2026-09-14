@@ -47,6 +47,38 @@ function appendRrFilter(conditions: SQL[], q: Record<string, unknown>) {
   if (Number.isFinite(rrMax)) conditions.push(lte(trades.rr, rrMax))
 }
 
+/** 0=вс … 6=сб (как Date#getDay) в часовом поясе пользователя (tzOffset = getTimezoneOffset). */
+function parseWeekdays(q: Record<string, unknown>): number[] {
+  const raw = q.weekdays ?? q.weekday
+  const out: number[] = []
+  const add = (v: unknown) => {
+    const n = Number(v)
+    if (Number.isFinite(n) && n >= 0 && n <= 6 && !out.includes(n)) out.push(n)
+  }
+  if (typeof raw === 'string' && raw.trim()) {
+    for (const part of raw.split(',')) add(part.trim())
+  } else if (Array.isArray(raw)) {
+    for (const v of raw) add(v)
+  } else if (raw != null && raw !== '') add(raw)
+  return out
+}
+
+function appendWeekdayFilter(conditions: SQL[], q: Record<string, unknown>) {
+  const days = parseWeekdays(q)
+  if (!days.length) return
+  const tzOffset = Number(q.tzOffset)
+  if (!Number.isFinite(tzOffset)) return
+  const dow = sql`EXTRACT(DOW FROM (${trades.exitAt} - (${tzOffset} * interval '1 minute')))`
+  if (days.length === 1) {
+    conditions.push(sql`${dow} = ${days[0]}`)
+  } else {
+    conditions.push(sql`${dow} IN (${sql.join(
+      days.map((d) => sql`${d}`),
+      sql`, `,
+    )})`)
+  }
+}
+
 /** labelIds=1,2,3 или labelId=1 (legacy); сделка должна иметь хотя бы один из лейблов. */
 function parseLabelIds(q: Record<string, unknown>): number[] {
   const raw = q.labelIds ?? q.labelId
@@ -88,6 +120,7 @@ export async function queryTradesForList(db: Db, q: Record<string, unknown>): Pr
     const dayCond: SQL[] = [gte(trades.exitAt, from), lte(trades.exitAt, to)]
     appendAnalysisFilter(dayCond, q)
     appendRrFilter(dayCond, q)
+    appendWeekdayFilter(dayCond, q)
     await appendLabelFilter(db, dayCond, q)
     const rows = await db
       .select()
@@ -125,6 +158,7 @@ export async function queryTradesForList(db: Db, q: Record<string, unknown>): Pr
   appendAnalysisFilter(conditions, q)
   await appendLabelFilter(db, conditions, q)
   appendRrFilter(conditions, q)
+  appendWeekdayFilter(conditions, q)
 
   const sortDesc = q.sort === 'exit_desc'
   const order = sortDesc ? desc(trades.exitAt) : asc(trades.exitAt)

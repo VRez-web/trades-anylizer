@@ -13,7 +13,7 @@ const { data, refresh, pending, error } = await useFetch(() => `/api/trades/${id
 })
 
 const { fmtUsdt, fmtInstrumentPrice, fmtPriceMovePct } = useMoney()
-const { names: propAccountNames } = usePropAccountNames()
+const { selectableNames: propAccountNames } = usePropAccountNames()
 const dayPlanOpen = ref(false)
 const dayPlanLoading = ref(false)
 const dayPlanText = ref('')

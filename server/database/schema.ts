@@ -22,6 +22,9 @@ export type TradeSource = (typeof tradeSourceEnum)[number]
 export const propEventKindEnum = ['purchase', 'payout'] as const
 export type PropEventKind = (typeof propEventKindEnum)[number]
 
+export const propAccountStatusEnum = ['active', 'passed', 'failed'] as const
+export type PropAccountStatus = (typeof propAccountStatusEnum)[number]
+
 export const labelDefs = pgTable(
   'label_defs',
   {
@@ -137,10 +140,26 @@ export const propEvents = pgTable('prop_events', {
   updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'date' }).notNull(),
 })
 
+/** Реестр проп-аккаунтов и их статус (прошёл / не прошёл). */
+export const propAccounts = pgTable(
+  'prop_accounts',
+  {
+    id: serial('id').primaryKey(),
+    name: text('name').notNull(),
+    status: text('status', { enum: propAccountStatusEnum }).notNull().default('active'),
+    createdAt: timestamp('created_at', { withTimezone: true, mode: 'date' }).notNull(),
+    updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'date' }).notNull(),
+  },
+  (t) => ({
+    nameIdx: uniqueIndex('prop_accounts_name_unique').on(t.name),
+  }),
+)
+
 export const schema = {
   labelDefs,
   mergeGroups,
   periodNotes,
+  propAccounts,
   propEvents,
   reasons,
   strategyDoc,

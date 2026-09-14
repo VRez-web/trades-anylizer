@@ -1,6 +1,7 @@
 import { inArray } from 'drizzle-orm'
 import { useDb } from '../../../utils/db'
 import { trades } from '../../../database/schema'
+import { ensurePropAccount } from '../../../utils/propAccounts'
 import {
   parseFundingPipsContent,
   toTradeInsert,
@@ -54,6 +55,7 @@ export default defineEventHandler(async (event) => {
 
   if (!dryRun && toImport.length) {
     const now = new Date()
+    await ensurePropAccount(db, accountName)
     try {
       await db.transaction(async (tx) => {
         for (const row of toImport) {

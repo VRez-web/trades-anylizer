@@ -1,5 +1,6 @@
 import { useDb } from '../../../utils/db'
 import { propEvents, type PropEventKind } from '../../../database/schema'
+import { ensurePropAccount } from '../../../utils/propAccounts'
 import { serializePropEvent } from '../../../utils/propCashflow'
 
 function parseKind(v: unknown): PropEventKind {
@@ -19,6 +20,7 @@ export default defineEventHandler(async (event) => {
   }
   const now = new Date()
   const db = useDb()
+  await ensurePropAccount(db, accountName)
   const [row] = await db
     .insert(propEvents)
     .values({

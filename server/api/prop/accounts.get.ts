@@ -1,8 +1,7 @@
 import { useDb } from '../../utils/db'
-import { propAccountNames } from '../../utils/propCashflow'
+import { propAccountsPayload } from '../../utils/propAccounts'
 
 export default defineEventHandler(async () => {
   const db = useDb()
-  const names = await propAccountNames(db)
-  return { names }
+  return propAccountsPayload(db)
 })

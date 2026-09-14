@@ -37,7 +37,19 @@ const LIST_FILTERS_KEY = 'trades-analyzer:list-filters'
 
 const route = useRoute()
 
-const { names: propAccountNames } = usePropAccountNames()
+const { selectableNames: propAccountNames } = usePropAccountNames()
+
+const WEEKDAY_OPTIONS = [
+  { v: 1, label: 'Пн' },
+  { v: 2, label: 'Вт' },
+  { v: 3, label: 'Ср' },
+  { v: 4, label: 'Чт' },
+  { v: 5, label: 'Пт' },
+  { v: 6, label: 'Сб' },
+  { v: 0, label: 'Вс' },
+] as const
+
+const weekdayFilter = ref<number[]>([])
 
 const importOpen = ref(false)
 
@@ -84,6 +96,10 @@ const query = computed(() => {
   if (labelIds.value.length) q.labelIds = labelIds.value.join(',')
   if (tradeSource.value !== 'all') q.tradeSource = tradeSource.value
   if (accountNameFilter.value.trim()) q.accountName = accountNameFilter.value.trim()
+  if (weekdayFilter.value.length) {
+    q.weekdays = weekdayFilter.value.join(',')
+    q.tzOffset = String(new Date().getTimezoneOffset())
+  }
   return q
 })
 
@@ -99,6 +115,7 @@ type SavedListFilters = {
   tradeSource?: typeof tradeSource.value
   sort?: typeof sort.value
   infoOpen?: boolean
+  weekdayFilter?: number[]
 }
 
 function loadSavedFilters() {
@@ -121,6 +138,9 @@ function loadSavedFilters() {
     }
     if (j.sort === 'exit_desc' || j.sort === 'exit_asc') sort.value = j.sort
     if (j.infoOpen === true) infoOpen.value = true
+    if (Array.isArray(j.weekdayFilter)) {
+      weekdayFilter.value = j.weekdayFilter.filter((n) => Number.isFinite(n) && n >= 0 && n <= 6)
+    }
   } catch {
     /* ignore */
   }
@@ -140,6 +160,7 @@ function saveFilters() {
     tradeSource: tradeSource.value,
     sort: sort.value,
     infoOpen: infoOpen.value,
+    weekdayFilter: [...weekdayFilter.value],
   }
   localStorage.setItem(LIST_FILTERS_KEY, JSON.stringify(payload))
 }
@@ -152,6 +173,16 @@ function toggleLabelId(id: number) {
 
 function clearLabelIds() {
   labelIds.value = []
+}
+
+function toggleWeekday(v: number) {
+  const i = weekdayFilter.value.indexOf(v)
+  if (i === -1) weekdayFilter.value = [...weekdayFilter.value, v]
+  else weekdayFilter.value = weekdayFilter.value.filter((x) => x !== v)
+}
+
+function clearWeekdays() {
+  weekdayFilter.value = []
 }
 
 const listUrl = computed(() => {
@@ -216,7 +247,7 @@ onMounted(() => {
 })
 
 watch(
-  [side, result, analysis, fromDate, toDate, rrMin, rrMax, labelIds, tradeSource, sort, infoOpen],
+  [side, result, analysis, fromDate, toDate, rrMin, rrMax, labelIds, tradeSource, sort, infoOpen, weekdayFilter],
   () => {
     saveFilters()
   },
@@ -382,7 +413,14 @@ async function submitAddTrade() {
 const { fmtUsdt } = useMoney()
 
 function fmtExit(iso: string) {
-  return new Date(iso).toLocaleString('ru-RU', { dateStyle: 'short', timeStyle: 'medium' })
+  const d = new Date(iso)
+  const wd = d.toLocaleDateString('ru-RU', { weekday: 'short' })
+  const rest = d.toLocaleString('ru-RU', { dateStyle: 'short', timeStyle: 'medium' })
+  return `${wd}, ${rest}`
+}
+
+function weekdayLabel(d: number) {
+  return WEEKDAY_OPTIONS.find((w) => w.v === d)?.label ?? String(d)
 }
 
 function goTrade(id: number) {
@@ -478,6 +516,19 @@ const byEntryHour = computed(() => {
     m.set(h, cur)
   }
   return [...m.entries()].sort((a, b) => a[0] - b[0])
+})
+
+const byWeekday = computed(() => {
+  const m = new Map<number, { net: number; count: number }>()
+  for (const t of infoTradesForStats.value) {
+    const d = new Date(t.exitAt).getDay()
+    const cur = m.get(d) ?? { net: 0, count: 0 }
+    cur.net += t.net
+    cur.count += 1
+    m.set(d, cur)
+  }
+  const order = [1, 2, 3, 4, 5, 6, 0]
+  return order.filter((d) => m.has(d)).map((d) => [d, m.get(d)!] as const)
 })
 
 /** При фильтре «Результат: все» — общий винрейт и по long/short (win = положительный net). */
@@ -590,6 +641,29 @@ function fmtRr(v: number | null) {
           <span class="fl-l">RR до</span>
           <input v-model="rrMax" class="input" type="number" step="0.1" />
         </label>
+        <div class="fl fl-label-span weekday-filter">
+          <div class="label-filter-head">
+            <span class="fl-l">День недели (выход)</span>
+            <button
+              v-if="weekdayFilter.length"
+              type="button"
+              class="btn btn-tiny label-filter-clear"
+              @click="clearWeekdays"
+            >
+              Сбросить ({{ weekdayFilter.length }})
+            </button>
+          </div>
+          <div class="weekday-filter-list">
+            <label v-for="w in WEEKDAY_OPTIONS" :key="w.v" class="weekday-filter-item">
+              <input
+                type="checkbox"
+                :checked="weekdayFilter.includes(w.v)"
+                @change="toggleWeekday(w.v)"
+              />
+              <span>{{ w.label }}</span>
+            </label>
+          </div>
+        </div>
         <div class="fl fl-label-span label-filter">
           <div class="label-filter-head">
             <span class="fl-l">Лейблы</span>
@@ -775,6 +849,17 @@ function fmtRr(v: number | null) {
             <div class="info-tile__lbl">{{ lb }}</div>
             <div class="info-tile__meta">
               <span>{{ agg.count }} {{ labelGroupMode === 'combo' ? 'сдел.' : 'упом.' }}</span>
+              <strong :class="agg.net >= 0 ? 'pos' : 'neg'">{{ fmtUsdt(agg.net) }}</strong>
+            </div>
+          </div>
+        </div>
+
+        <h3 class="info-h">По дню недели (выход, локальное время)</h3>
+        <div class="info-grid info-grid--hours">
+          <div v-for="[d, agg] in byWeekday" :key="d" class="info-tile info-tile--hour">
+            <div class="info-tile__sym">{{ weekdayLabel(d) }}</div>
+            <div class="info-tile__meta">
+              <span>{{ agg.count }}</span>
               <strong :class="agg.net >= 0 ? 'pos' : 'neg'">{{ fmtUsdt(agg.net) }}</strong>
             </div>
           </div>
@@ -1367,6 +1452,24 @@ function fmtRr(v: number | null) {
 }
 .info-tile__meta strong {
   font-size: 0.8125rem;
+}
+.weekday-filter {
+  grid-column: 1 / -1;
+}
+.weekday-filter-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem 0.65rem;
+}
+.weekday-filter-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.8125rem;
+  cursor: pointer;
+}
+.weekday-filter-item input {
+  flex-shrink: 0;
 }
 .label-filter {
   grid-column: 1 / -1;

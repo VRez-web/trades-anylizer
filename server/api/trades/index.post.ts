@@ -1,5 +1,6 @@
 import { useDb } from '../../utils/db'
 import { trades } from '../../database/schema'
+import { ensurePropAccount } from '../../utils/propAccounts'
 import { parseLabelIds } from '../../utils/labelIdsBody'
 import { replaceTradeLabels } from '../../utils/tradeLabels'
 import { parseChartMetaBody } from '../../utils/chartProvider'
@@ -65,6 +66,9 @@ export default defineEventHandler(async (event) => {
   const body = await readBody(event) as Record<string, unknown>
   const row = parseBody(body)
   const db = useDb()
+  if (row.tradeSource === 'prop' && row.accountName) {
+    await ensurePropAccount(db, row.accountName)
+  }
   const [inserted] = await db.insert(trades).values(row).returning()
   const packs = parseLabelIds(body)
   if (packs && inserted) await replaceTradeLabels(db, inserted.id, packs)

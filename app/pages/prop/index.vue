@@ -31,7 +31,37 @@ type PropTradeRow = {
 }
 
 const { fmtUsdt, fmtSignedUsdt } = useMoney()
-const { names: propAccountNames, refresh: refreshAccountNames } = usePropAccountNames()
+const {
+  names: propAccountNames,
+  accounts: propAccounts,
+  selectableNames: propSelectableNames,
+  refresh: refreshAccountNames,
+} = usePropAccountNames()
+
+const statusSaving = ref<string | null>(null)
+
+function onAccountStatusChange(name: string, ev: Event) {
+  const v = (ev.target as HTMLSelectElement).value
+  if (v === 'active' || v === 'passed' || v === 'failed') {
+    void setAccountStatus(name, v)
+  }
+}
+
+async function setAccountStatus(name: string, status: PropAccountStatus) {
+  statusSaving.value = name
+  try {
+    await $fetch('/api/prop/accounts', { method: 'PATCH', body: { name, status } })
+    await refreshAccountNames()
+  } catch (e: unknown) {
+    const msg =
+      e && typeof e === 'object' && 'data' in e
+        ? String((e as { data?: { statusMessage?: string } }).data?.statusMessage ?? '')
+        : ''
+    alert(msg || 'Не удалось обновить статус')
+  } finally {
+    statusSaving.value = null
+  }
+}
 
 const selectedAccount = ref('')
 
@@ -159,6 +189,28 @@ const importOpen = ref(false)
       </select>
     </label>
 
+    <div v-if="propAccounts.length" class="card accounts-status">
+      <h2 class="block-h">Статус аккаунтов</h2>
+      <p class="muted accounts-status-hint">
+        «Не прошёл» скрывается при добавлении проп-сделки в списке сделок.
+      </p>
+      <div class="accounts-status-list">
+        <div v-for="a in propAccounts" :key="a.name" class="accounts-status-row">
+          <span class="accounts-status-name">{{ a.name }}</span>
+          <select
+            class="input input-compact accounts-status-select"
+            :value="a.status"
+            :disabled="statusSaving === a.name"
+            @change="onAccountStatusChange(a.name, $event)"
+          >
+            <option value="active">В процессе</option>
+            <option value="passed">Прошёл</option>
+            <option value="failed">Не прошёл</option>
+          </select>
+        </div>
+      </div>
+    </div>
+
     <div v-if="stats?.summary" class="summary-grid">
       <div class="card summary-tile">
         <div class="summary-lbl">Покупки аккаунтов</div>
@@ -179,7 +231,10 @@ const importOpen = ref(false)
         <strong :class="stats.summary.tradesNet >= 0 ? 'pos' : 'neg'">{{
           fmtSignedUsdt(stats.summary.tradesNet)
         }}</strong>
-        <span class="muted summary-sub">{{ stats.summary.tradesCount }} сделок</span>
+      </div>
+      <div class="card summary-tile">
+        <div class="summary-lbl">Всего сделок</div>
+        <strong>{{ stats.summary.tradesCount }}</strong>
       </div>
       <div class="card summary-tile summary-tile--wide">
         <div class="summary-lbl">Итого по пропу</div>
@@ -304,7 +359,7 @@ const importOpen = ref(false)
 
     <FundingPipsImportModal
       v-model:open="importOpen"
-      :account-names="propAccountNames"
+      :account-names="propSelectableNames"
       :default-account="selectedAccount"
       @imported="refreshAll"
     />
@@ -353,6 +408,37 @@ const importOpen = ref(false)
 }
 .account-filter .input {
   min-width: 12rem;
+}
+.accounts-status {
+  margin-bottom: 1rem;
+  padding: 0.75rem 0.85rem;
+}
+.accounts-status-hint {
+  margin: 0 0 0.65rem;
+  font-size: 0.8125rem;
+}
+.accounts-status-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+}
+.accounts-status-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+.accounts-status-name {
+  font-weight: 600;
+  font-size: 0.875rem;
+}
+.accounts-status-select {
+  min-width: 9rem;
+}
+.input-compact {
+  font-size: 0.8125rem;
+  padding: 0.3rem 0.45rem;
 }
 .summary-grid {
   display: grid;
