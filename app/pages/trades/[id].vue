@@ -13,6 +13,7 @@ const { data, refresh, pending, error } = await useFetch(() => `/api/trades/${id
 })
 
 const { fmtUsdt, fmtInstrumentPrice, fmtPriceMovePct } = useMoney()
+const { setBasis } = useDisplayUnit()
 const { selectableNames: propAccountNames } = usePropAccountNames()
 const dayPlanOpen = ref(false)
 const dayPlanLoading = ref(false)
@@ -52,6 +53,14 @@ const quoteVolPreview = computed(() => {
   if (t.externalKey) return t.quoteVolumeUsdt ?? null
   return estimateQuoteVolumeUsdt(form.side, form.entryPrice, form.exitPrice, form.income)
 })
+
+watch(
+  quoteVolPreview,
+  (v) => {
+    setBasis(v)
+  },
+  { immediate: true },
+)
 
 const priceMoveStr = computed(() => {
   const t = data.value?.trade
@@ -464,7 +473,7 @@ async function save() {
         <span class="sum-chunk muted">{{ Math.round(data.trade.durationMs / 60000) }} мин</span>
         <span v-if="quoteVolPreview != null" class="sum-chunk">
           <span class="muted sum-lbl">Объём:</span>
-          <strong>{{ fmtUsdt(quoteVolPreview) }}</strong>
+          <strong>{{ fmtUsdt(quoteVolPreview, { forceUsdt: true }) }}</strong>
           <span class="muted tiny-hint">номинал</span>
         </span>
         <span v-else class="sum-chunk muted">Объём: —</span>

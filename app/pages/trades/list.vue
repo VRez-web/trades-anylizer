@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { ChartMeta } from '#shared/chartMeta'
+import { sumQuoteVolumeUsdt } from '#shared/quoteVolume'
 type LabelItem = { kind: string; label: string }
 
 type TradeSource = 'live' | 'test' | 'prop'
@@ -37,7 +38,7 @@ const LIST_FILTERS_KEY = 'trades-analyzer:list-filters'
 
 const route = useRoute()
 
-const { selectableNames: propAccountNames } = usePropAccountNames()
+const { names: propFilterNames, selectableNames: propAccountNames } = usePropAccountNames()
 
 const WEEKDAY_OPTIONS = [
   { v: 1, label: 'Пн' },
@@ -95,7 +96,9 @@ const query = computed(() => {
   if (rrMax.value !== '' && Number.isFinite(max)) q.rrMax = String(max)
   if (labelIds.value.length) q.labelIds = labelIds.value.join(',')
   if (tradeSource.value !== 'all') q.tradeSource = tradeSource.value
-  if (accountNameFilter.value.trim()) q.accountName = accountNameFilter.value.trim()
+  if (tradeSource.value === 'prop' && accountNameFilter.value.trim()) {
+    q.accountName = accountNameFilter.value.trim()
+  }
   if (weekdayFilter.value.length) {
     q.weekdays = weekdayFilter.value.join(',')
     q.tzOffset = String(new Date().getTimezoneOffset())
@@ -113,6 +116,7 @@ type SavedListFilters = {
   rrMax?: string
   labelIds?: number[]
   tradeSource?: typeof tradeSource.value
+  accountNameFilter?: string
   sort?: typeof sort.value
   infoOpen?: boolean
   weekdayFilter?: number[]
@@ -136,6 +140,9 @@ function loadSavedFilters() {
     if (j.tradeSource === 'all' || j.tradeSource === 'live' || j.tradeSource === 'test' || j.tradeSource === 'prop') {
       tradeSource.value = j.tradeSource
     }
+    if (typeof j.accountNameFilter === 'string' && j.tradeSource === 'prop') {
+      accountNameFilter.value = j.accountNameFilter
+    }
     if (j.sort === 'exit_desc' || j.sort === 'exit_asc') sort.value = j.sort
     if (j.infoOpen === true) infoOpen.value = true
     if (Array.isArray(j.weekdayFilter)) {
@@ -158,6 +165,7 @@ function saveFilters() {
     rrMax: rrMax.value,
     labelIds: [...labelIds.value],
     tradeSource: tradeSource.value,
+    accountNameFilter: accountNameFilter.value,
     sort: sort.value,
     infoOpen: infoOpen.value,
     weekdayFilter: [...weekdayFilter.value],
@@ -247,12 +255,16 @@ onMounted(() => {
 })
 
 watch(
-  [side, result, analysis, fromDate, toDate, rrMin, rrMax, labelIds, tradeSource, sort, infoOpen, weekdayFilter],
+  [side, result, analysis, fromDate, toDate, rrMin, rrMax, labelIds, tradeSource, accountNameFilter, sort, infoOpen, weekdayFilter],
   () => {
     saveFilters()
   },
   { deep: true },
 )
+
+watch(tradeSource, (src) => {
+  if (src !== 'prop') accountNameFilter.value = ''
+})
 
 const NO_LABEL_KEY = '— без лейблов'
 
@@ -411,6 +423,15 @@ async function submitAddTrade() {
 }
 
 const { fmtUsdt } = useMoney()
+const { setBasis } = useDisplayUnit()
+
+watch(
+  trades,
+  (rows) => {
+    setBasis(sumQuoteVolumeUsdt((rows ?? []) as { quoteVolumeUsdt?: number | null }[]))
+  },
+  { immediate: true },
+)
 
 function fmtExit(iso: string) {
   const d = new Date(iso)
@@ -623,6 +644,13 @@ function fmtRr(v: number | null) {
             <option value="live">Live</option>
             <option value="test">Тест</option>
             <option value="prop">Проп</option>
+          </select>
+        </label>
+        <label v-if="tradeSource === 'prop'" class="fl">
+          <span class="fl-l">Проп-аккаунт</span>
+          <select v-model="accountNameFilter" class="input" :disabled="!propFilterNames.length">
+            <option value="">Все пропы</option>
+            <option v-for="n in propFilterNames" :key="n" :value="n">{{ n }}</option>
           </select>
         </label>
         <label class="fl">

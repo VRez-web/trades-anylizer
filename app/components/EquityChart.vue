@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { createChart, ColorType, LineSeries, createSeriesMarkers } from 'lightweight-charts'
-import { bindSeriesMarkersLayoutSync, eventUnixSeconds } from '#shared/tradeChartMarkers'
+import { createChart, ColorType, LineSeries, LineStyle } from 'lightweight-charts'
+import { eventUnixSeconds } from '#shared/tradeChartMarkers'
 import { nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 
 export type EquityChartMarker = {
@@ -13,116 +13,162 @@ export type EquityChartMarker = {
 const props = defineProps<{
   points: { t: string; cumulative: number }[]
   markers?: EquityChartMarker[]
+  volumeBasis?: number | null
 }>()
 
 const wrap = ref<HTMLDivElement | null>(null)
 const root = ref<HTMLDivElement | null>(null)
-const tooltip = ref<{ x: number; y: number; text: string } | null>(null)
+const hovered = ref<number | null>(null)
+const dots = ref<{ x: number; y: number; kind: 'purchase' | 'payout'; text: string }[]>([])
+
+const { unit, fmtUsdt } = useMoney()
+
 let chart: ReturnType<typeof createChart> | null = null
+let series: ReturnType<ReturnType<typeof createChart>['addSeries']> | null = null
 let resizeObserver: ResizeObserver | null = null
-let markersLayout: ReturnType<typeof bindSeriesMarkersLayoutSync> | null = null
-let crosshairHandler: ((param: { time?: unknown; point?: { x: number; y: number } }) => void) | null = null
-
-const MARKER_TOLERANCE_SEC = 12 * 3600
-
-function fmtAmount(kind: 'purchase' | 'payout', amount: number) {
-  const n = Math.abs(amount)
-  const s = n.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 2 })
-  return kind === 'purchase' ? `−$${s}` : `+$${s}`
-}
+let rangeHandler: (() => void) | null = null
 
 function markerLabel(m: EquityChartMarker) {
   const kind = m.kind === 'purchase' ? 'Покупка пропа' : 'Выплата с пропа'
   const when = new Date(m.t).toLocaleString('ru-RU', { dateStyle: 'short', timeStyle: 'short' })
-  return `${kind} · ${m.accountName} · ${fmtAmount(m.kind, m.amountUsdt)} · ${when}`
+  const signed = m.kind === 'purchase' ? -Math.abs(m.amountUsdt) : Math.abs(m.amountUsdt)
+  return `${kind} · ${m.accountName} · ${fmtUsdt(signed, { basis: props.volumeBasis })} · ${when}`
 }
 
-function findNearestMarker(timeSec: number): EquityChartMarker | null {
-  const list = props.markers ?? []
-  if (!list.length || !Number.isFinite(timeSec)) return null
-  let best: EquityChartMarker | null = null
+function toUnix(iso: string) {
+  return Math.floor(new Date(iso).getTime() / 1000) as import('lightweight-charts').UTCTimestamp
+}
+
+function formatAxisPrice(value: number) {
+  if (unit.value === 'pct') {
+    return `${value.toLocaleString('ru-RU', { maximumFractionDigits: 1 })} %`
+  }
+  const sign = value < 0 ? '−' : ''
+  return `${sign}$${Math.abs(value).toLocaleString('ru-RU', { maximumFractionDigits: 0 })}`
+}
+
+function valueAtTime(timeSec: number) {
+  const pts = props.points
+  if (!pts.length) return 0
+  let best = pts[0]
   let bestDt = Infinity
-  for (const m of list) {
-    const dt = Math.abs(eventUnixSeconds(m.t) - timeSec)
+  for (const p of pts) {
+    const dt = Math.abs(toUnix(p.t) - timeSec)
     if (dt < bestDt) {
       bestDt = dt
-      best = m
+      best = p
     }
   }
-  return bestDt <= MARKER_TOLERANCE_SEC ? best : null
+  return best.cumulative
 }
 
-function buildChartMarkers() {
-  return (props.markers ?? []).map((m) => {
-    const isPurchase = m.kind === 'purchase'
-    const amt = Math.round(Math.abs(m.amountUsdt))
-    return {
-      time: eventUnixSeconds(m.t),
-      position: isPurchase ? ('belowBar' as const) : ('aboveBar' as const),
-      color: isPurchase ? '#b91c1c' : '#15803d',
-      shape: isPurchase ? ('arrowDown' as const) : ('arrowUp' as const),
-      text: isPurchase ? `−${amt}` : `+${amt}`,
-    }
-  })
+function layoutDots() {
+  if (!chart || !series) {
+    dots.value = []
+    return
+  }
+  const next: typeof dots.value = []
+  for (const m of props.markers ?? []) {
+    const time = eventUnixSeconds(m.t) as import('lightweight-charts').UTCTimestamp
+    const x = chart.timeScale().timeToCoordinate(time)
+    const y = series.priceToCoordinate(valueAtTime(time))
+    if (x == null || y == null) continue
+    next.push({ x, y, kind: m.kind, text: markerLabel(m) })
+  }
+  dots.value = next
 }
 
 function redraw() {
   if (!root.value) return
-  tooltip.value = null
-  if (crosshairHandler && chart) {
-    chart.unsubscribeCrosshairMove(crosshairHandler)
-    crosshairHandler = null
+  hovered.value = null
+  if (rangeHandler && chart) {
+    chart.timeScale().unsubscribeVisibleLogicalRangeChange(rangeHandler)
+    rangeHandler = null
   }
-  markersLayout?.unbind()
-  markersLayout = null
   chart?.remove()
   chart = null
+  series = null
+  dots.value = []
   if (!props.points.length) return
+
   chart = createChart(root.value, {
     width: root.value.clientWidth,
-    height: 280,
+    height: 420,
     layout: {
       background: { type: ColorType.Solid, color: '#ffffff' },
-      textColor: '#64748b',
+      textColor: '#5b6778',
+      fontSize: 12,
     },
     grid: {
-      vertLines: { color: '#e2e8f0' },
-      horzLines: { color: '#e2e8f0' },
+      vertLines: { color: '#d6dde6' },
+      horzLines: { color: '#d6dde6' },
     },
-    rightPriceScale: { borderColor: '#e2e8f0' },
-    timeScale: { borderColor: '#e2e8f0', timeVisible: true },
+    leftPriceScale: {
+      visible: true,
+      borderColor: '#9aa6b2',
+      scaleMargins: { top: 0.06, bottom: 0.08 },
+    },
+    rightPriceScale: { visible: false },
+    timeScale: {
+      borderColor: '#9aa6b2',
+      timeVisible: false,
+    },
+    crosshair: {
+      vertLine: { color: '#94a3b8', width: 1, style: LineStyle.Dashed, labelVisible: false },
+      horzLine: { color: '#94a3b8', width: 1, style: LineStyle.Dashed, labelVisible: true },
+    },
   })
-  const series = chart.addSeries(LineSeries, { color: '#2563eb', lineWidth: 2 })
+
+  series = chart.addSeries(LineSeries, {
+    color: '#4472C4',
+    lineWidth: 3,
+    priceLineVisible: false,
+    lastValueVisible: false,
+    priceFormat: {
+      type: 'custom',
+      minMove: 0.01,
+      formatter: formatAxisPrice,
+    },
+  })
+
   const data = props.points.map((p) => ({
-    time: Math.floor(new Date(p.t).getTime() / 1000) as import('lightweight-charts').UTCTimestamp,
+    time: toUnix(p.t),
     value: p.cumulative,
   }))
   series.setData(data)
-  const markerList = buildChartMarkers()
-  if (markerList.length) {
-    const markersApi = createSeriesMarkers(series, markerList)
-    markersLayout = bindSeriesMarkersLayoutSync(chart, markersApi, markerList)
-  }
-  crosshairHandler = (param) => {
-    if (!param.point || param.time == null || param.time === undefined) {
-      tooltip.value = null
-      return
-    }
-    const timeSec = typeof param.time === 'number' ? param.time : Number(param.time)
-    const hit = findNearestMarker(timeSec)
-    if (!hit) {
-      tooltip.value = null
-      return
-    }
-    tooltip.value = {
-      x: param.point.x,
-      y: param.point.y,
-      text: markerLabel(hit),
-    }
-  }
-  chart.subscribeCrosshairMove(crosshairHandler)
+
+  series.createPriceLine({
+    price: 0,
+    color: '#94a3b8',
+    lineWidth: 1,
+    lineStyle: LineStyle.Solid,
+    axisLabelVisible: true,
+    title: '',
+  })
+
+  series.applyOptions({
+    autoscaleInfoProvider: (original) => {
+      const res = original()
+      if (!res?.priceRange) return res
+      const dataMin = res.priceRange.minValue
+      const dataMax = res.priceRange.maxValue
+      const min = Math.min(dataMin, 0)
+      const max = Math.max(dataMax, 0)
+      const span = Math.max(max - min, Math.abs(max) * 0.08, 1)
+      const pad = span * 0.08
+      return {
+        ...res,
+        priceRange: { minValue: min - pad, maxValue: max + pad },
+      }
+    },
+  })
+
   chart.timeScale().fitContent()
-  markersLayout?.refresh()
+  rangeHandler = () => layoutDots()
+  chart.timeScale().subscribeVisibleLogicalRangeChange(rangeHandler)
+  nextTick(() => {
+    requestAnimationFrame(() => layoutDots())
+  })
 }
 
 watch(
@@ -131,35 +177,58 @@ watch(
   { deep: true },
 )
 
+watch(
+  () => [fmtUsdt(0), props.volumeBasis, unit.value],
+  () => {
+    series?.applyOptions({
+      priceFormat: { type: 'custom', minMove: 0.01, formatter: formatAxisPrice },
+    })
+    layoutDots()
+  },
+)
+
 onMounted(() => {
   redraw()
   resizeObserver = new ResizeObserver(() => {
     if (chart && root.value) {
       chart.applyOptions({ width: root.value.clientWidth })
-      markersLayout?.refresh()
+      layoutDots()
     }
   })
   if (root.value) resizeObserver.observe(root.value)
 })
 
 onUnmounted(() => {
-  if (crosshairHandler && chart) chart.unsubscribeCrosshairMove(crosshairHandler)
-  markersLayout?.unbind()
+  if (rangeHandler && chart) chart.timeScale().unsubscribeVisibleLogicalRangeChange(rangeHandler)
   resizeObserver?.disconnect()
   chart?.remove()
   chart = null
+  series = null
 })
 </script>
 
 <template>
   <div ref="wrap" class="eq-wrap">
     <div ref="root" class="eq" />
+    <button
+      v-for="(d, i) in dots"
+      :key="i"
+      type="button"
+      class="eq-dot-btn"
+      :class="[`eq-dot-btn--${d.kind}`, { 'is-hot': hovered === i }]"
+      :style="{ left: `${d.x}px`, top: `${d.y}px` }"
+      :aria-label="d.text"
+      @mouseenter="hovered = i"
+      @mouseleave="hovered = null"
+      @focus="hovered = i"
+      @blur="hovered = null"
+    />
     <div
-      v-if="tooltip"
+      v-if="hovered != null && dots[hovered]"
       class="eq-tooltip"
-      :style="{ left: `${tooltip.x}px`, top: `${tooltip.y}px` }"
+      :style="{ left: `${dots[hovered].x}px`, top: `${dots[hovered].y}px` }"
     >
-      {{ tooltip.text }}
+      {{ dots[hovered].text }}
     </div>
   </div>
 </template>
@@ -170,13 +239,55 @@ onUnmounted(() => {
   width: 100%;
 }
 .eq {
-  min-height: 280px;
+  min-height: 420px;
   width: 100%;
+}
+.eq-dot-btn {
+  position: absolute;
+  z-index: 4;
+  width: 12px;
+  height: 12px;
+  margin: 0;
+  padding: 0;
+  border-radius: 50%;
+  border: 2px solid #fff;
+  transform: translate(-50%, -50%);
+  cursor: pointer;
+  box-shadow: 0 0 0 1px rgba(15, 23, 42, 0.12);
+}
+.eq-dot-btn--purchase {
+  background: #b91c1c;
+}
+.eq-dot-btn--payout {
+  background: #15803d;
+}
+.eq-dot-btn.is-hot {
+  animation: eq-pulse 1.1s ease-out infinite;
+}
+@keyframes eq-pulse {
+  0% {
+    box-shadow: 0 0 0 0 currentColor;
+    transform: translate(-50%, -50%) scale(1);
+  }
+  70% {
+    box-shadow: 0 0 0 10px transparent;
+    transform: translate(-50%, -50%) scale(1.35);
+  }
+  100% {
+    box-shadow: 0 0 0 0 transparent;
+    transform: translate(-50%, -50%) scale(1);
+  }
+}
+.eq-dot-btn--purchase.is-hot {
+  color: rgba(185, 28, 28, 0.45);
+}
+.eq-dot-btn--payout.is-hot {
+  color: rgba(21, 128, 61, 0.45);
 }
 .eq-tooltip {
   position: absolute;
   z-index: 5;
-  transform: translate(-50%, calc(-100% - 8px));
+  transform: translate(-50%, calc(-100% - 12px));
   max-width: min(320px, 90vw);
   padding: 0.35rem 0.55rem;
   border-radius: 6px;
@@ -186,6 +297,6 @@ onUnmounted(() => {
   line-height: 1.35;
   pointer-events: none;
   white-space: normal;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.15);
 }
 </style>

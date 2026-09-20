@@ -1,5 +1,6 @@
 <script setup lang="ts">
 const CALENDAR_YM_KEY = 'trades-analyzer:calendar-ym'
+const { unit, setBasis } = useDisplayUnit()
 
 const now = new Date()
 const year = ref(now.getFullYear())
@@ -36,7 +37,11 @@ const calendarUrl = computed(
 )
 const { data: calendar } = await useFetch(calendarUrl)
 
-const { data: equity } = await useFetch('/api/stats/equity')
+const { data: equity } = await useFetch<{
+  points: { t: string; cumulative: number }[]
+  markers: { t: string; kind: 'purchase' | 'payout'; accountName: string; amountUsdt: number }[]
+  quoteVolumeUsdt?: number | null
+}>('/api/stats/equity')
 
 const byLabelUrl = computed(
   () => `/api/stats/by-label?year=${year.value}&month=${month.value}`,
@@ -46,11 +51,26 @@ const { data: byLabel } = await useFetch(byLabelUrl)
 const equityPoints = computed(() => {
   const raw = equity.value
   if (!raw || !('points' in raw) || !Array.isArray(raw.points)) return []
-  return raw.points.map((p: { t: string; cumulative: number }) => ({
+  const vol = raw.quoteVolumeUsdt
+  const asPct = unit.value === 'pct' && vol != null && vol > 0
+  return raw.points.map((p) => ({
     t: p.t,
-    cumulative: p.cumulative,
+    cumulative: asPct ? (p.cumulative / vol) * 100 : p.cumulative,
   }))
 })
+
+watch(
+  [calendar, equity],
+  () => {
+    const monthVol = Number((calendar.value as { monthQuoteVolume?: number } | null)?.monthQuoteVolume)
+    if (Number.isFinite(monthVol) && monthVol > 0) {
+      setBasis(monthVol)
+      return
+    }
+    setBasis(equity.value?.quoteVolumeUsdt ?? null)
+  },
+  { immediate: true },
+)
 
 const equityMarkers = computed(() => {
   const raw = equity.value
@@ -70,8 +90,8 @@ const equityEventsSorted = computed(() =>
 const { fmtUsdt } = useMoney()
 
 function fmtPropEventAmount(kind: 'purchase' | 'payout', amount: number) {
-  const n = Math.abs(amount)
-  return kind === 'purchase' ? `−${fmtUsdt(n)}` : `+${fmtUsdt(n)}`
+  const n = kind === 'purchase' ? -Math.abs(amount) : Math.abs(amount)
+  return fmtUsdt(n, { basis: equity.value?.quoteVolumeUsdt ?? null })
 }
 
 function fmtPropEventWhen(iso: string) {
@@ -123,6 +143,7 @@ function goDay(date: string) {
         :journal-by-day="calendar?.journalByDay ?? {}"
         :journal-month-analysis="calendar?.journalMonthAnalysis === true"
         :journal-week-analysis-by-key="calendar?.journalWeekAnalysisByKey ?? {}"
+        :month-quote-volume="calendar?.monthQuoteVolume ?? null"
         @update:year="year = $event"
         @update:month="month = $event"
         @pick="goDay"
@@ -140,14 +161,12 @@ function goDay(date: string) {
 
     <div class="card" style="margin-top: 1rem">
       <h2>Кривая доходности</h2>
-      <p class="muted bars-caption">
-        Live/test PnL и денежный поток пропов (покупки и выплаты). Торговый PnL проп-сделок не включён.
-      </p>
       <ClientOnly>
         <EquityChart
           v-if="equityPoints.length"
           :points="equityPoints"
           :markers="equityMarkers"
+          :volume-basis="equity?.quoteVolumeUsdt ?? null"
         />
         <template #fallback>
           <div class="muted" style="padding: 2rem">Загрузка графика…</div>

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { format } from 'date-fns'
+import { sumQuoteVolumeUsdt } from '#shared/quoteVolume'
 
 const route = useRoute()
 const router = useRouter()
@@ -37,6 +38,15 @@ onMounted(loadNote)
 watch(date, loadNote)
 
 const { fmtUsdt, fmtPriceMovePct, fmtSignedPercent } = useMoney()
+const { setBasis } = useDisplayUnit()
+
+watch(
+  trades,
+  (rows) => {
+    setBasis(sumQuoteVolumeUsdt((rows ?? []) as { quoteVolumeUsdt?: number | null }[]))
+  },
+  { immediate: true },
+)
 const runtimeConfig = useRuntimeConfig()
 
 const depositUsdt = computed(() => {

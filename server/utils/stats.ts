@@ -7,6 +7,7 @@ import type { AppDatabase } from '../types/app-database'
 import { selectTradesExcludingMergedOrphans } from './mergedTradeSync'
 import { propEvents, type PropEventKind } from '../database/schema'
 import { isLiveEquityTrade, signedPropEventAmount } from './propCashflow'
+import { displayQuoteVolumeUsdt } from './tradeQuoteVolume'
 
 type Db = AppDatabase
 
@@ -84,11 +85,14 @@ export async function calendarMonth(db: Db, year: number, monthIndex0: number, t
     dayMeta.set(k, meta)
   }
 
+  let monthQuoteVolume = 0
   for (const t of rows) {
     const k = exitDateKeyAtOffset(t.exitAt, tzOffsetMinutes)
     byDay.set(k, (byDay.get(k) ?? 0) + netForTrade(t))
+    const vol = displayQuoteVolumeUsdt(t.entryNotionalUsdt, t.side, t.entryPrice, t.exitPrice, t.income)
+    if (vol) monthQuoteVolume += vol
   }
-  return { byDay, from, to, tradesCount: rows.length, dayMeta }
+  return { byDay, from, to, tradesCount: rows.length, dayMeta, monthQuoteVolume }
 }
 
 export async function calendarMonthJournalFlags(db: Db, year: number, monthIndex1: number) {
@@ -206,7 +210,16 @@ export async function combinedEquitySeries(db: Db) {
     points.push({ t: item.at.toISOString(), net: item.net, cumulative: cum })
     if (item.marker) markers.push(item.marker)
   }
-  return { points, markers }
+  let quoteVolumeUsdt = 0
+  let hasVol = false
+  for (const t of tradeRows) {
+    const vol = displayQuoteVolumeUsdt(t.entryNotionalUsdt, t.side, t.entryPrice, t.exitPrice, t.income)
+    if (vol) {
+      quoteVolumeUsdt += vol
+      hasVol = true
+    }
+  }
+  return { points, markers, quoteVolumeUsdt: hasVol ? quoteVolumeUsdt : null }
 }
 
 export async function pnlByLabelInMonth(db: Db, kind: LabelKind, year: number, monthIndex1: number) {

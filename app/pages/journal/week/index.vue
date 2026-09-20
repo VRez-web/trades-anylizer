@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { sumQuoteVolumeUsdt } from '#shared/quoteVolume'
+
 const route = useRoute()
 const router = useRouter()
 
@@ -33,6 +35,16 @@ async function saveNote() {
 }
 
 const { fmtUsdt } = useMoney()
+const { setBasis } = useDisplayUnit()
+
+watch(
+  data,
+  (d) => {
+    const rows = (d?.days ?? []).flatMap((day: { trades?: { quoteVolumeUsdt?: number | null }[] }) => day.trades ?? [])
+    setBasis(sumQuoteVolumeUsdt(rows))
+  },
+  { immediate: true },
+)
 </script>
 
 <template>

@@ -1,4 +1,5 @@
 import { asc, eq } from 'drizzle-orm'
+import { nextMarkedPropName } from '#shared/propAccountName'
 import { propAccounts, propEvents, trades, type PropAccountStatus } from '../database/schema'
 import type { AppDatabase } from '../types/app-database'
 
@@ -47,7 +48,21 @@ export async function ensurePropAccount(db: Db, rawName: string) {
   await db
     .insert(propAccounts)
     .values({ name, status: 'active', createdAt: now, updatedAt: now })
-    .onConflictDoNothing()
+    .onConflictDoNothing({ target: propAccounts.name })
+}
+
+export async function allocatePropAccountName(db: Db, rawName: string, newInstance: boolean) {
+  const name = rawName.trim()
+  if (!name) {
+    throw createError({ statusCode: 400, statusMessage: 'accountName required' })
+  }
+  await syncPropAccountNames(db)
+  const rows = await db.select({ name: propAccounts.name }).from(propAccounts)
+  const existing = rows.map((r) => r.name)
+  const exactTaken = existing.includes(name)
+  const resolved = newInstance && exactTaken ? nextMarkedPropName(existing, name) : name
+  await ensurePropAccount(db, resolved)
+  return resolved
 }
 
 export async function listPropAccounts(db: Db) {

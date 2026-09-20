@@ -4,6 +4,7 @@ import { useDb } from '../../utils/db'
 import { trades, periodNotes, labelDefs, tradeLabelLinks } from '../../database/schema'
 import { aggregateTrades, periodKeyWeek, exitDateKeyLocal } from '../../utils/stats'
 import { netProfit } from '../../utils/tradeMath'
+import { displayQuoteVolumeUsdt } from '../../utils/tradeQuoteVolume'
 import { selectTradesExcludingMergedOrphans } from '../../utils/mergedTradeSync'
 
 export default defineEventHandler(async (event) => {
@@ -79,6 +80,13 @@ export default defineEventHandler(async (event) => {
         symbol: t.symbol,
         side: t.side,
         net: netProfit(t),
+        quoteVolumeUsdt: displayQuoteVolumeUsdt(
+          t.entryNotionalUsdt,
+          t.side,
+          t.entryPrice,
+          t.exitPrice,
+          t.income,
+        ),
       })),
     }
   })

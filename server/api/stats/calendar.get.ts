@@ -10,7 +10,7 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 400, statusMessage: 'year, month (1-12) required' })
   }
   const db = useDb()
-  const [{ byDay, tradesCount, dayMeta }, journalByDay, periodFlags] = await Promise.all([
+  const [{ byDay, tradesCount, dayMeta, monthQuoteVolume }, journalByDay, periodFlags] = await Promise.all([
     calendarMonth(db, y, m - 1, Number.isFinite(tzOffset) ? tzOffset : 0),
     calendarMonthJournalFlags(db, y, m),
     calendarMonthPeriodFlags(db, y, m - 1),
@@ -23,6 +23,7 @@ export default defineEventHandler(async (event) => {
     days: Object.fromEntries(byDay.entries()),
     dayMeta: dayMetaObj,
     monthTradesCount: tradesCount,
+    monthQuoteVolume,
     journalByDay,
     journalMonthAnalysis: periodFlags.monthAnalysis,
     journalWeekAnalysisByKey: periodFlags.weekAnalysisByKey,

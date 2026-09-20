@@ -23,6 +23,8 @@ const props = defineProps<{
   journalMonthAnalysis?: boolean
   /** По ISO-ключу недели yyyy-Www: есть ли анализ недели (`period_notes.scope='week'`). */
   journalWeekAnalysisByKey?: Record<string, boolean>
+  /** Объём сделок месяца — база для режима %. */
+  monthQuoteVolume?: number | null
 }>()
 
 const emit = defineEmits<{
@@ -190,7 +192,7 @@ function next() {
             class="title-net"
             :class="{ 'title-net--pos': monthNet > 0, 'title-net--neg': monthNet < 0, 'title-net--zero': monthNet === 0 }"
           >
-            ({{ fmtSignedUsdt(monthNet, 0) }})
+            ({{ fmtSignedUsdt(monthNet, 0, monthQuoteVolume) }})
           </span>
           <span class="title-count">
             {{ monthTradesLabel }}
@@ -243,7 +245,7 @@ function next() {
             </span>
             <span class="num">{{ c.dayNum }}</span>
             <span v-if="c.inMonth && c.sum != null && c.sum !== 0" class="mini" :class="c.sum > 0 ? 'pos' : 'neg'">
-              {{ fmtSignedUsdt(c.sum, 0) }}
+              {{ fmtSignedUsdt(c.sum, 0, monthQuoteVolume) }}
             </span>
             <span
               v-else-if="c.inMonth && c.liveCount > 0"

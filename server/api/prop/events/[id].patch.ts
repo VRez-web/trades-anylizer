@@ -1,6 +1,7 @@
 import { eq } from 'drizzle-orm'
 import { useDb } from '../../../utils/db'
 import { propEvents, type PropEventKind } from '../../../database/schema'
+import { allocatePropAccountName } from '../../../utils/propAccounts'
 import { serializePropEvent } from '../../../utils/propCashflow'
 
 function parseKind(v: unknown): PropEventKind | undefined {
@@ -22,7 +23,10 @@ export default defineEventHandler(async (event) => {
     if (!kind) throw createError({ statusCode: 400, statusMessage: 'kind: purchase | payout' })
     patch.kind = kind
   }
-  if ('accountName' in body && body.accountName !== undefined) {
+  if (body.splitInstance === true) {
+    const next = await allocatePropAccountName(db, existing.accountName, true)
+    patch.accountName = next
+  } else if ('accountName' in body && body.accountName !== undefined) {
     const name = String(body.accountName).trim()
     if (!name) throw createError({ statusCode: 400, statusMessage: 'accountName required' })
     patch.accountName = name

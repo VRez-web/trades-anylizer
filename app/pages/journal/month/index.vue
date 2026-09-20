@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { sumQuoteVolumeUsdt } from '#shared/quoteVolume'
+
 const route = useRoute()
 const router = useRouter()
 
@@ -62,6 +64,15 @@ async function saveNote() {
 }
 
 const { fmtUsdt } = useMoney()
+const { setBasis } = useDisplayUnit()
+
+watch(
+  data,
+  (d) => {
+    setBasis(sumQuoteVolumeUsdt(d?.trades ?? []))
+  },
+  { immediate: true },
+)
 
 function fmtWinRatePct(p: number | null) {
   if (p == null || Number.isNaN(p)) return '—'

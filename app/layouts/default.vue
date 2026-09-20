@@ -1,6 +1,7 @@
 <script setup lang="ts">
 const bybitSync = useBybitSyncLoading()
 const syncingNow = ref(false)
+const { unit, toggleUnit } = useDisplayUnit()
 
 async function logout() {
   try {
@@ -51,6 +52,15 @@ async function runBybitSync() {
             <NuxtLink to="/journal/month">Месяц</NuxtLink>
             <NuxtLink to="/journal/year">Год</NuxtLink>
           </div>
+          <button
+            type="button"
+            class="btn btn-tiny unit-toggle"
+            :class="{ 'btn-primary': unit === 'pct' }"
+            :title="unit === 'pct' ? 'Сейчас % от объёма сделок. Нажмите для USDT' : 'Сейчас USDT. Нажмите для % от объёма'"
+            @click="toggleUnit"
+          >
+            {{ unit === 'pct' ? '%' : 'USDT' }}
+          </button>
           <button
             type="button"
             class="btn btn-tiny"
@@ -121,6 +131,10 @@ async function runBybitSync() {
 .sub-label {
   color: var(--muted);
   font-size: 0.8rem;
+}
+.unit-toggle {
+  font-variant-numeric: tabular-nums;
+  min-width: 3.4rem;
 }
 .logout-btn {
   margin-left: auto;

@@ -2,6 +2,7 @@
 import { format } from 'date-fns'
 import { defaultTradePlanTemplate } from '#shared/tradePlanTemplate'
 import type { JournalDayTrade } from '~/components/JournalDayCandleChart.vue'
+import { sumQuoteVolumeUsdt } from '#shared/quoteVolume'
 
 const route = useRoute()
 const router = useRouter()
@@ -102,6 +103,15 @@ const rrByTradeId = computed(() => {
 })
 
 const { fmtInstrumentPrice, fmtSignedUsdt } = useMoney()
+const { setBasis } = useDisplayUnit()
+
+watch(
+  data,
+  (d) => {
+    setBasis(sumQuoteVolumeUsdt(d?.trades ?? []))
+  },
+  { immediate: true },
+)
 
 async function saveNote() {
   await $fetch('/api/notes', {

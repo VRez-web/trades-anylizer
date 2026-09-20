@@ -1,6 +1,6 @@
 import { useDb } from '../../../utils/db'
 import { propEvents, type PropEventKind } from '../../../database/schema'
-import { ensurePropAccount } from '../../../utils/propAccounts'
+import { allocatePropAccountName } from '../../../utils/propAccounts'
 import { serializePropEvent } from '../../../utils/propCashflow'
 
 function parseKind(v: unknown): PropEventKind {
@@ -20,12 +20,14 @@ export default defineEventHandler(async (event) => {
   }
   const now = new Date()
   const db = useDb()
-  await ensurePropAccount(db, accountName)
+  const kind = parseKind(body.kind)
+  /** Покупка на занятое имя всегда новый экземпляр (#2), иначе второй проп схлопывается. */
+  const resolvedName = await allocatePropAccountName(db, accountName, kind === 'purchase')
   const [row] = await db
     .insert(propEvents)
     .values({
-      kind: parseKind(body.kind),
-      accountName,
+      kind,
+      accountName: resolvedName,
       amountUsdt,
       eventAt,
       note: body.note != null && String(body.note).trim() ? String(body.note).trim() : null,

@@ -1,4 +1,7 @@
 <script setup lang="ts">
+import { nameConflictsWithExisting, nextMarkedPropName, propInstanceNumber } from '#shared/propAccountName'
+import { sumQuoteVolumeUsdt } from '#shared/quoteVolume'
+
 type PropEvent = {
   id: number
   kind: 'purchase' | 'payout'
@@ -28,9 +31,11 @@ type PropTradeRow = {
   net: number
   side: string
   accountName?: string | null
+  quoteVolumeUsdt?: number | null
 }
 
 const { fmtUsdt, fmtSignedUsdt } = useMoney()
+const { setBasis } = useDisplayUnit()
 const {
   names: propAccountNames,
   accounts: propAccounts,
@@ -63,7 +68,31 @@ async function setAccountStatus(name: string, status: PropAccountStatus) {
   }
 }
 
+const PROP_ACCOUNT_KEY = 'prop-selected-account'
 const selectedAccount = ref('')
+
+if (import.meta.client) {
+  try {
+    const saved = localStorage.getItem(PROP_ACCOUNT_KEY)
+    if (saved) selectedAccount.value = saved
+  } catch {
+    /* ignore */
+  }
+}
+
+watch(selectedAccount, (v) => {
+  if (!import.meta.client) return
+  try {
+    if (v) localStorage.setItem(PROP_ACCOUNT_KEY, v)
+    else localStorage.removeItem(PROP_ACCOUNT_KEY)
+  } catch {
+    /* ignore */
+  }
+})
+
+function selectAccount(name: string) {
+  selectedAccount.value = selectedAccount.value === name ? '' : name
+}
 
 const { data: events, refresh: refreshEvents } = await useFetch<PropEvent[]>('/api/prop/events')
 
@@ -111,14 +140,22 @@ function openAdd() {
   addOpen.value = true
 }
 
+const existingConflict = computed(() =>
+  nameConflictsWithExisting(propAccountNames.value, addForm.accountName),
+)
+const suggestedNewName = computed(() =>
+  nextMarkedPropName(propAccountNames.value, addForm.accountName),
+)
+
 async function submitAdd() {
+  const typed = addForm.accountName.trim()
   addSaving.value = true
   try {
     await $fetch('/api/prop/events', {
       method: 'POST',
       body: {
         kind: addForm.kind,
-        accountName: addForm.accountName,
+        accountName: typed,
         amountUsdt: Number(addForm.amountUsdt),
         eventAt: new Date(addForm.eventAt).toISOString(),
         note: addForm.note.trim() || null,
@@ -143,6 +180,13 @@ async function removeEvent(id: number) {
   await refreshAll()
 }
 
+async function splitEvent(id: number, currentName: string) {
+  const next = nextMarkedPropName(propAccountNames.value, currentName)
+  if (!confirm(`Вынести в отдельный аккаунт «${next}»?`)) return
+  await $fetch(`/api/prop/events/${id}`, { method: 'PATCH', body: { splitInstance: true } })
+  await refreshAll()
+}
+
 function fmtWhen(iso: string) {
   return new Date(iso).toLocaleString('ru-RU', { dateStyle: 'short', timeStyle: 'short' })
 }
@@ -164,6 +208,14 @@ const listLink = computed(() => {
 })
 
 const importOpen = ref(false)
+
+watch(
+  propTrades,
+  (rows) => {
+    setBasis(sumQuoteVolumeUsdt(rows ?? []))
+  },
+  { immediate: true },
+)
 </script>
 
 <template>
@@ -192,15 +244,26 @@ const importOpen = ref(false)
     <div v-if="propAccounts.length" class="card accounts-status">
       <h2 class="block-h">Статус аккаунтов</h2>
       <p class="muted accounts-status-hint">
-        «Не прошёл» скрывается при добавлении проп-сделки в списке сделок.
+        Клик по строке показывает сделки и события только этого аккаунта. «Не прошёл» скрывается при добавлении
+        проп-сделки в списке.
       </p>
       <div class="accounts-status-list">
-        <div v-for="a in propAccounts" :key="a.name" class="accounts-status-row">
-          <span class="accounts-status-name">{{ a.name }}</span>
+        <div
+          v-for="a in propAccounts"
+          :key="a.name"
+          class="accounts-status-row"
+          :class="{ 'accounts-status-row--active': selectedAccount === a.name }"
+          @click="selectAccount(a.name)"
+        >
+          <span class="accounts-status-name">
+            {{ a.name }}
+            <span v-if="propInstanceNumber(a.name)" class="instance-mark">экз. {{ propInstanceNumber(a.name) }}</span>
+          </span>
           <select
             class="input input-compact accounts-status-select"
             :value="a.status"
             :disabled="statusSaving === a.name"
+            @click.stop
             @change="onAccountStatusChange(a.name, $event)"
           >
             <option value="active">В процессе</option>
@@ -214,11 +277,11 @@ const importOpen = ref(false)
     <div v-if="stats?.summary" class="summary-grid">
       <div class="card summary-tile">
         <div class="summary-lbl">Покупки аккаунтов</div>
-        <strong class="neg">−{{ fmtUsdt(stats.summary.purchasesTotal) }}</strong>
+        <strong class="neg">{{ fmtSignedUsdt(-Math.abs(stats.summary.purchasesTotal)) }}</strong>
       </div>
       <div class="card summary-tile">
         <div class="summary-lbl">Выплаты</div>
-        <strong class="pos">+{{ fmtUsdt(stats.summary.payoutsTotal) }}</strong>
+        <strong class="pos">{{ fmtSignedUsdt(Math.abs(stats.summary.payoutsTotal)) }}</strong>
       </div>
       <div class="card summary-tile">
         <div class="summary-lbl">Денежный поток</div>
@@ -303,7 +366,16 @@ const importOpen = ref(false)
               <td v-if="!selectedAccount">{{ e.accountName }}</td>
               <td :class="e.signedUsdt >= 0 ? 'pos' : 'neg'">{{ fmtSignedUsdt(e.signedUsdt) }}</td>
               <td class="note-cell">{{ e.note || '—' }}</td>
-              <td>
+              <td class="event-actions">
+                <button
+                  v-if="e.kind === 'purchase'"
+                  type="button"
+                  class="btn btn-tiny"
+                  title="Вынести в отдельный аккаунт с меткой #N"
+                  @click="splitEvent(e.id, e.accountName)"
+                >
+                  Отделить
+                </button>
                 <button type="button" class="btn btn-tiny" @click="removeEvent(e.id)">Удалить</button>
               </td>
             </tr>
@@ -334,6 +406,12 @@ const importOpen = ref(false)
             <datalist id="prop-account-datalist">
               <option v-for="n in propAccountNames" :key="n" :value="n" />
             </datalist>
+            <span
+              v-if="addForm.kind === 'purchase' && existingConflict"
+              class="muted fl-hint"
+            >
+              Имя занято — сохранится как «{{ suggestedNewName }}».
+            </span>
           </label>
           <label class="fl">
             <span class="fl-l">Сумма, USDT</span>
@@ -428,10 +506,49 @@ const importOpen = ref(false)
   align-items: center;
   justify-content: space-between;
   gap: 0.5rem;
+  padding: 0.4rem 0.5rem;
+  border-radius: 6px;
+  cursor: pointer;
+  border: 1px solid transparent;
+}
+.accounts-status-row:hover {
+  background: rgba(37, 99, 235, 0.04);
+}
+.accounts-status-row--active {
+  background: rgba(37, 99, 235, 0.08);
+  border-color: rgba(37, 99, 235, 0.28);
 }
 .accounts-status-name {
   font-weight: 600;
   font-size: 0.875rem;
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem;
+}
+.instance-mark {
+  font-size: 0.68rem;
+  font-weight: 600;
+  padding: 1px 5px;
+  border-radius: 3px;
+  color: #1d4ed8;
+  background: rgba(37, 99, 235, 0.1);
+  border: 1px solid rgba(37, 99, 235, 0.25);
+}
+.fl-hint {
+  font-size: 0.75rem;
+  margin-top: 0.15rem;
+}
+.new-instance-check {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.4rem;
+  margin-top: 0.35rem;
+  font-size: 0.8125rem;
+  cursor: pointer;
+}
+.new-instance-check input {
+  margin-top: 0.15rem;
 }
 .accounts-status-select {
   min-width: 9rem;
@@ -514,6 +631,12 @@ const importOpen = ref(false)
   max-width: 14rem;
   font-size: 0.8125rem;
   color: var(--muted);
+}
+.event-actions {
+  white-space: nowrap;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
 }
 .kind-badge {
   display: inline-block;
