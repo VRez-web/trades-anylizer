@@ -2,6 +2,7 @@
 import { resolveChartMeta, type ChartMeta } from '#shared/chartMeta'
 import { calcRr, formatRr } from '#shared/tradeRr'
 import { tradeNoteHints } from '#shared/tradeNoteHints'
+import type { LabelKind } from '#shared/labelKind'
 import { estimateQuoteVolumeUsdt } from '#shared/tradeQuoteVolume'
 
 const route = useRoute()
@@ -141,6 +142,7 @@ const form = reactive({
     system: [] as number[],
     technique: [] as number[],
     psychology: [] as number[],
+    other: [] as number[],
   },
   tradeSource: 'live' as 'live' | 'test' | 'prop',
   accountName: '',
@@ -203,6 +205,7 @@ function snapshotLabelIds(): string {
     system: norm(form.labelIds.system),
     technique: norm(form.labelIds.technique),
     psychology: norm(form.labelIds.psychology),
+    other: norm(form.labelIds.other),
   })
 }
 
@@ -273,13 +276,12 @@ watch(
         showGeneralAnalysis.value = false
       }
     }
-    const lb = d.labels as
-      | { system: { id: number }[]; technique: { id: number }[]; psychology: { id: number }[] }
-      | undefined
+    const lb = d.labels as Partial<Record<LabelKind, { id: number }[]>> | undefined
     if (lb) {
-      form.labelIds.system = lb.system.map((x) => x.id)
-      form.labelIds.technique = lb.technique.map((x) => x.id)
-      form.labelIds.psychology = lb.psychology.map((x) => x.id)
+      form.labelIds.system = (lb.system ?? []).map((x) => x.id)
+      form.labelIds.technique = (lb.technique ?? []).map((x) => x.id)
+      form.labelIds.psychology = (lb.psychology ?? []).map((x) => x.id)
+      form.labelIds.other = (lb.other ?? []).map((x) => x.id)
     }
     lastSentLabelIds.value = snapshotLabelIds()
     labelsReady.value = true
@@ -306,6 +308,7 @@ watch(
               system: [...form.labelIds.system],
               technique: [...form.labelIds.technique],
               psychology: [...form.labelIds.psychology],
+              other: [...form.labelIds.other],
             },
           },
         })
@@ -372,6 +375,11 @@ const optionsPsychology = computed(() =>
     .filter((x: { kind: string }) => x.kind === 'psychology')
     .map((x: { id: number; label: string }) => ({ id: x.id, label: x.label })),
 )
+const optionsOther = computed(() =>
+  (allLabels.value ?? [])
+    .filter((x: { kind: string }) => x.kind === 'other')
+    .map((x: { id: number; label: string }) => ({ id: x.id, label: x.label })),
+)
 
 const saving = ref(false)
 
@@ -382,6 +390,7 @@ async function save() {
       system: form.labelIds.system,
       technique: form.labelIds.technique,
       psychology: form.labelIds.psychology,
+      other: form.labelIds.other,
     }
     const chartPayload = {
       chartSymbol: form.chartSymbol,
@@ -688,6 +697,20 @@ async function save() {
               <label class="label">Объём <span class="muted">(USDT)</span></label>
               <input v-model="form.entryNotionalUsdt" class="input" type="number" step="any" placeholder="опционально" />
             </div>
+          </div>
+
+          <div class="other-labels">
+            <div class="label note-label">
+              <LabelWithHint :lines="tradeNoteHints.other">Общие лейблы</LabelWithHint>
+            </div>
+            <LabelMultiCombobox
+              v-model="form.labelIds.other"
+              kind="other"
+              :options="optionsOther"
+              input-class="input input-tight"
+              class="label-row"
+              @refresh="refreshAllLabels"
+            />
           </div>
 
           <label class="ts-toggle row">
@@ -1031,6 +1054,10 @@ async function save() {
   margin: 0.35rem 0 0;
   font-size: 0.75rem;
   line-height: 1.35;
+}
+.other-labels {
+  margin-top: 0.5rem;
+  max-width: 28rem;
 }
 .ts-toggle {
   align-items: flex-start;

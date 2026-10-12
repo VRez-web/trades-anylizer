@@ -2,8 +2,9 @@ import { asc, eq } from 'drizzle-orm'
 import { useDb } from '../../utils/db'
 import { labelDefs } from '../../database/schema'
 import type { LabelKind } from '../../database/schema'
+import { labelKinds } from '#shared/labelKind'
 
-const KINDS = new Set<string>(['system', 'technique', 'psychology'])
+const KINDS = new Set<string>(labelKinds)
 
 export default defineEventHandler(async (event) => {
   const q = getQuery(event)

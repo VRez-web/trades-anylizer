@@ -96,7 +96,7 @@ watch(
                 <NuxtLink :to="`/trades/${tr.id}`" class="trade-line">
                   <span class="trade-sym">{{ tr.symbol }}</span>
                   <span class="trade-side" :class="tr.side">{{ tr.side === 'long' ? 'L' : 'S' }}</span>
-                  <span class="trade-net" :class="tr.net >= 0 ? 'pos' : 'neg'">{{ fmtUsdt(tr.net) }}</span>
+                  <span class="trade-net" :class="tr.net >= 0 ? 'pos' : 'neg'">{{ fmtUsdt(tr.net, { basis: tr.quoteVolumeUsdt, strict: true }) }}</span>
                 </NuxtLink>
               </li>
             </ul>

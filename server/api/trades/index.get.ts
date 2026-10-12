@@ -3,6 +3,7 @@ import { serializeTrade } from '../../utils/serialize'
 import { queryTradesForList } from '../../utils/queryTradesForList'
 import { labelDefs, tradeLabelLinks } from '../../database/schema'
 import { inArray, eq } from 'drizzle-orm'
+import { emptyLabelPack, type LabelKind } from '#shared/labelKind'
 
 export default defineEventHandler(async (event) => {
   const db = useDb()
@@ -22,18 +23,14 @@ export default defineEventHandler(async (event) => {
     .innerJoin(labelDefs, eq(tradeLabelLinks.labelId, labelDefs.id))
     .where(inArray(tradeLabelLinks.tradeId, ids))
 
-  const byTradeId = new Map<number, { system: string[]; technique: string[]; psychology: string[] }>()
-  for (const id of ids) byTradeId.set(id, { system: [], technique: [], psychology: [] })
+  const byTradeId = new Map<number, Record<LabelKind, string[]>>()
+  for (const id of ids) byTradeId.set(id, emptyLabelPack<string>())
   for (const row of links) {
-    const target = byTradeId.get(row.tradeId)
-    if (!target) continue
-    if (row.kind === 'system') target.system.push(row.label)
-    else if (row.kind === 'technique') target.technique.push(row.label)
-    else if (row.kind === 'psychology') target.psychology.push(row.label)
+    byTradeId.get(row.tradeId)?.[row.kind].push(row.label)
   }
 
   return serialized.map((t) => ({
     ...t,
-    labels: byTradeId.get(t.id) ?? { system: [], technique: [], psychology: [] },
+    labels: byTradeId.get(t.id) ?? emptyLabelPack<string>(),
   }))
 })

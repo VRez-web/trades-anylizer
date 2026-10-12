@@ -8,9 +8,10 @@ import {
   primaryKey,
   timestamp,
 } from 'drizzle-orm/pg-core'
+import { labelKinds } from '../../shared/labelKind'
 
-export const labelKindEnum = ['system', 'technique', 'psychology'] as const
-export type LabelKind = (typeof labelKindEnum)[number]
+export const labelKindEnum = labelKinds
+export type { LabelKind } from '../../shared/labelKind'
 
 /** live — биржа/основной счёт; test — тестовые сделки; prop — проп (зарезервировано). */
 export const chartProviderEnum = ['bybit', 'yahoo'] as const

@@ -77,6 +77,7 @@ const tradesForChart = computed((): JournalDayTrade[] => {
         exitPrice: number
         side: string
         net: number
+        quoteVolumeUsdt?: number | null
         analysisSections?: {
           general: { system: boolean; technique: boolean; psychology: boolean }
           ts: { system: boolean; technique: boolean; psychology: boolean }
@@ -89,6 +90,7 @@ const tradesForChart = computed((): JournalDayTrade[] => {
         exitPrice: t.exitPrice,
         side: t.side as 'long' | 'short',
         net: t.net,
+        quoteVolumeUsdt: t.quoteVolumeUsdt ?? null,
         analysisSections: t.analysisSections,
       }),
     )
@@ -175,7 +177,7 @@ async function saveNote() {
                 </span>
                 Сделка {{ i + 1 }}:
                 {{ fmtInstrumentPrice(t.entryPrice) }} → {{ fmtInstrumentPrice(t.exitPrice) }} · чистый
-                <span :class="t.net >= 0 ? 'pos' : 'neg'">{{ fmtSignedUsdt(t.net, 2) }}</span>
+                <span :class="t.net >= 0 ? 'pos' : 'neg'">{{ fmtSignedUsdt(t.net, 2, t.quoteVolumeUsdt, { strict: true }) }}</span>
                 <template v-if="rrByTradeId.has(t.id)">
                   · RR {{ rrByTradeId.get(t.id)?.toFixed(2) }}
                 </template>

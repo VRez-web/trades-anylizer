@@ -23,24 +23,29 @@ export function useMoney() {
     }).format(0)} %`
   }
 
-  function resolveBasis(override?: number | null) {
+  /** strict: только переданная база (объём сделки / дня), без фолбэка на объём страницы. */
+  function resolveBasis(override?: number | null, strict = false) {
     if (override != null && Number.isFinite(override) && override > 0) return override
+    if (strict) return null
     const b = basis.value
     return b != null && Number.isFinite(b) && b > 0 ? b : null
   }
 
-  function fmtAsPct(n: number, override?: number | null) {
-    const den = resolveBasis(override)
+  function fmtAsPct(n: number, override?: number | null, strict = false) {
+    const den = resolveBasis(override, strict)
     if (den == null) return '—'
     return fmtSignedPercent((n / den) * 100)
   }
 
-  /** Суммы в USDT (PnL, комиссии и т.д.) или % от текущего объёма. */
+  /**
+   * Суммы в USDT (PnL, комиссии и т.д.) или % от объёма.
+   * Для одной сделки передавайте её объём + strict: % = net / объём сделки ≈ ход цены минус комиссии.
+   */
   function fmtUsdt(
     n: number,
-    opts?: { max?: number; min?: number; basis?: number | null; forceUsdt?: boolean },
+    opts?: { max?: number; min?: number; basis?: number | null; strict?: boolean; forceUsdt?: boolean },
   ) {
-    if (unit.value === 'pct' && !opts?.forceUsdt) return fmtAsPct(n, opts?.basis)
+    if (unit.value === 'pct' && !opts?.forceUsdt) return fmtAsPct(n, opts?.basis, opts?.strict)
     return `${fmt(n, opts)} USDT`
   }
 
@@ -63,8 +68,13 @@ export function useMoney() {
   }
 
   /** Для календаря и подписей: «+12 USDT» / «−5 USDT» или % */
-  function fmtSignedUsdt(n: number, fractionDigits = 0, overrideBasis?: number | null) {
-    if (unit.value === 'pct') return fmtAsPct(n, overrideBasis)
+  function fmtSignedUsdt(
+    n: number,
+    fractionDigits = 0,
+    overrideBasis?: number | null,
+    opts?: { strict?: boolean; forceUsdt?: boolean },
+  ) {
+    if (unit.value === 'pct' && !opts?.forceUsdt) return fmtAsPct(n, overrideBasis, opts?.strict)
     const abs = Math.abs(n)
     const num = new Intl.NumberFormat('ru-RU', {
       minimumFractionDigits: fractionDigits,

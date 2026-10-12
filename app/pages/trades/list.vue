@@ -27,11 +27,12 @@ type TradeRow = {
 
 type LabelGroupMode = 'full' | 'combo'
 
-const LABEL_KIND_ORDER: Record<string, number> = { system: 0, technique: 1, psychology: 2 }
+const LABEL_KIND_ORDER: Record<string, number> = { system: 0, technique: 1, psychology: 2, other: 3 }
 const LABEL_KIND_RU: Record<string, string> = {
   system: 'система',
   technique: 'техника',
   psychology: 'психология',
+  other: 'общие',
 }
 
 const LIST_FILTERS_KEY = 'trades-analyzer:list-filters'
@@ -951,7 +952,7 @@ function fmtRr(v: number | null) {
               <span v-else class="muted">—</span>
             </td>
             <td>{{ t.side === 'long' ? 'Long' : 'Short' }}</td>
-            <td :class="t.net >= 0 ? 'pos' : 'neg'">{{ fmtUsdt(t.net) }}</td>
+            <td :class="t.net >= 0 ? 'pos' : 'neg'">{{ fmtUsdt(t.net, { basis: t.quoteVolumeUsdt, strict: true }) }}</td>
             <td>{{ t.rr == null ? '—' : t.rr.toFixed(2) }}</td>
             <td>
               <AnalysisSectionBadges

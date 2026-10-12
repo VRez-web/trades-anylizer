@@ -2,10 +2,9 @@ import { and, eq, inArray } from 'drizzle-orm'
 import { labelDefs, tradeLabelLinks } from '../database/schema'
 import type { LabelKind } from '../database/schema'
 import type { AppDatabase } from '../types/app-database'
+import { labelKinds as KINDS } from '#shared/labelKind'
 
 type Db = AppDatabase
-
-const KINDS: LabelKind[] = ['system', 'technique', 'psychology']
 
 export async function assertLabelIdsForKinds(db: Db, packs: Record<LabelKind, number[]>) {
   for (const kind of KINDS) {

@@ -5,6 +5,7 @@ import { serializeTrade } from '../../utils/serialize'
 import { netProfit } from '../../utils/tradeMath'
 import { repairMergedLegsIfNeeded } from '../../utils/repairMergedLegsFromBybit'
 import type { LabelKind } from '../../database/schema'
+import { emptyLabelPack } from '#shared/labelKind'
 
 export default defineEventHandler(async (event) => {
   const id = Number(getRouterParam(event, 'id'))
@@ -27,11 +28,7 @@ export default defineEventHandler(async (event) => {
     .from(tradeLabelLinks)
     .innerJoin(labelDefs, eq(tradeLabelLinks.labelId, labelDefs.id))
     .where(eq(tradeLabelLinks.tradeId, id))
-  const labels: Record<LabelKind, { id: number; label: string }[]> = {
-    system: [],
-    technique: [],
-    psychology: [],
-  }
+  const labels: Record<LabelKind, { id: number; label: string }[]> = emptyLabelPack()
   for (const r of links) {
     labels[r.kind].push({ id: r.id, label: r.label })
   }

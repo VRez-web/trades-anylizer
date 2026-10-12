@@ -251,18 +251,18 @@ async function unmergeGroup(mergeGroupId: number) {
           <td class="time-t">{{ fmtTradeTime(t.entryAt) }}</td>
           <td class="time-t">{{ fmtTradeTime(t.exitAt) }}</td>
           <td :class="t.net >= 0 ? 'pos' : 'neg'">
-            {{ fmtUsdt(t.net) }}
+            {{ fmtUsdt(t.net, { basis: t.quoteVolumeUsdt, strict: true }) }}
             <span v-if="tradePricePct(t)" class="net-pct-bracket muted"> ({{ tradePricePct(t) }})</span>
           </td>
           <td>
             <div class="labels-wrap">
               <template
-                v-for="(lbl, idx) in [...(t.labels?.system ?? []), ...(t.labels?.technique ?? []), ...(t.labels?.psychology ?? [])]"
+                v-for="(lbl, idx) in [...(t.labels?.system ?? []), ...(t.labels?.technique ?? []), ...(t.labels?.psychology ?? []), ...(t.labels?.other ?? [])]"
                 :key="`${t.id}:${lbl}:${idx}`"
               >
                 <span class="lbl-pill">{{ lbl }}</span>
               </template>
-              <span v-if="!(t.labels?.system?.length || t.labels?.technique?.length || t.labels?.psychology?.length)" class="muted">—</span>
+              <span v-if="!(t.labels?.system?.length || t.labels?.technique?.length || t.labels?.psychology?.length || t.labels?.other?.length)" class="muted">—</span>
             </div>
           </td>
           <td>

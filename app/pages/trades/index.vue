@@ -91,7 +91,7 @@ const { fmtUsdt } = useMoney()
 
 function fmtPropEventAmount(kind: 'purchase' | 'payout', amount: number) {
   const n = kind === 'purchase' ? -Math.abs(amount) : Math.abs(amount)
-  return fmtUsdt(n, { basis: equity.value?.quoteVolumeUsdt ?? null })
+  return fmtUsdt(n, { forceUsdt: true })
 }
 
 function fmtPropEventWhen(iso: string) {
@@ -101,28 +101,6 @@ function fmtPropEventWhen(iso: string) {
 function propEventKindLabel(kind: 'purchase' | 'payout') {
   return kind === 'purchase' ? 'Покупка' : 'Выплата'
 }
-
-const systemRows = computed(() => {
-  if (!byLabel.value?.system) return []
-  return byLabel.value.system.map((r: { label: string; sum: number }) => ({
-    label: r.label,
-    sum: r.sum,
-  }))
-})
-const techniqueRows = computed(() => {
-  if (!byLabel.value?.technique) return []
-  return byLabel.value.technique.map((r: { label: string; sum: number }) => ({
-    label: r.label,
-    sum: r.sum,
-  }))
-})
-const psychologyRows = computed(() => {
-  if (!byLabel.value?.psychology) return []
-  return byLabel.value.psychology.map((r: { label: string; sum: number }) => ({
-    label: r.label,
-    sum: r.sum,
-  }))
-})
 
 function goDay(date: string) {
   navigateTo(`/trades/day/${date}`)
@@ -144,6 +122,7 @@ function goDay(date: string) {
         :journal-month-analysis="calendar?.journalMonthAnalysis === true"
         :journal-week-analysis-by-key="calendar?.journalWeekAnalysisByKey ?? {}"
         :month-quote-volume="calendar?.monthQuoteVolume ?? null"
+        :day-quote-volume="calendar?.dayQuoteVolume ?? {}"
         @update:year="year = $event"
         @update:month="month = $event"
         @pick="goDay"
@@ -153,11 +132,7 @@ function goDay(date: string) {
     <p class="muted bars-caption">
       Инфографика по лейблам за выбранный месяц (дата выхода из сделки попадает в месяц).
     </p>
-    <div class="bars-row">
-      <ReasonBars title="Лейблы системы" :rows="systemRows" />
-      <ReasonBars title="Лейблы техники" :rows="techniqueRows" />
-      <ReasonBars title="Лейблы психологии" :rows="psychologyRows" />
-    </div>
+    <LabelBarsGrid :data="byLabel" />
 
     <div class="card" style="margin-top: 1rem">
       <h2>Кривая доходности</h2>
@@ -199,11 +174,6 @@ function goDay(date: string) {
 .bars-caption {
   margin: 0 0 0.65rem;
   font-size: 0.8125rem;
-}
-.bars-row {
-  display: grid;
-  grid-template-columns: 1fr;
-  gap: 1rem;
 }
 .eq-legend {
   display: flex;

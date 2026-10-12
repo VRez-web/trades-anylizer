@@ -5,6 +5,7 @@ import { exitDateKeyLocal } from '../../utils/stats'
 import { buildMergedTradePayload } from '../../utils/mergeTradeAggregate'
 import { replaceTradeLabels } from '../../utils/tradeLabels'
 import type { LabelKind } from '../../database/schema'
+import { emptyLabelPack } from '#shared/labelKind'
 import type { AppDatabase } from '../../types/app-database'
 
 export default defineEventHandler(async (event) => {
@@ -49,11 +50,7 @@ export default defineEventHandler(async (event) => {
     .innerJoin(labelDefs, eq(tradeLabelLinks.labelId, labelDefs.id))
     .where(inArray(tradeLabelLinks.tradeId, ids))
 
-  const labelPacks: Record<LabelKind, number[]> = {
-    system: [],
-    technique: [],
-    psychology: [],
-  }
+  const labelPacks: Record<LabelKind, number[]> = emptyLabelPack()
   for (const r of linkRows) {
     if (!labelPacks[r.kind].includes(r.id)) labelPacks[r.kind].push(r.id)
   }

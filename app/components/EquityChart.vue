@@ -32,7 +32,7 @@ function markerLabel(m: EquityChartMarker) {
   const kind = m.kind === 'purchase' ? 'Покупка пропа' : 'Выплата с пропа'
   const when = new Date(m.t).toLocaleString('ru-RU', { dateStyle: 'short', timeStyle: 'short' })
   const signed = m.kind === 'purchase' ? -Math.abs(m.amountUsdt) : Math.abs(m.amountUsdt)
-  return `${kind} · ${m.accountName} · ${fmtUsdt(signed, { basis: props.volumeBasis })} · ${when}`
+  return `${kind} · ${m.accountName} · ${fmtUsdt(signed, { forceUsdt: true })} · ${when}`
 }
 
 function toUnix(iso: string) {

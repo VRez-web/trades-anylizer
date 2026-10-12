@@ -86,13 +86,17 @@ export async function calendarMonth(db: Db, year: number, monthIndex0: number, t
   }
 
   let monthQuoteVolume = 0
+  const dayQuoteVolume = new Map<string, number>()
   for (const t of rows) {
     const k = exitDateKeyAtOffset(t.exitAt, tzOffsetMinutes)
     byDay.set(k, (byDay.get(k) ?? 0) + netForTrade(t))
     const vol = displayQuoteVolumeUsdt(t.entryNotionalUsdt, t.side, t.entryPrice, t.exitPrice, t.income)
-    if (vol) monthQuoteVolume += vol
+    if (vol) {
+      monthQuoteVolume += vol
+      dayQuoteVolume.set(k, (dayQuoteVolume.get(k) ?? 0) + vol)
+    }
   }
-  return { byDay, from, to, tradesCount: rows.length, dayMeta, monthQuoteVolume }
+  return { byDay, from, to, tradesCount: rows.length, dayMeta, monthQuoteVolume, dayQuoteVolume }
 }
 
 export async function calendarMonthJournalFlags(db: Db, year: number, monthIndex1: number) {
@@ -230,6 +234,8 @@ export async function pnlByLabelInMonth(db: Db, kind: LabelKind, year: number, m
       labelId: labelDefs.id,
       labelText: labelDefs.label,
       sumNet: sql<number>`coalesce(sum(${netExpr}), 0)`,
+      tradesCount: sql<number>`count(*)::int`,
+      winsCount: sql<number>`count(*) filter (where ${netExpr} > 0)::int`,
     })
     .from(trades)
     .innerJoin(tradeLabelLinks, eq(trades.id, tradeLabelLinks.tradeId))
@@ -241,7 +247,9 @@ export async function pnlByLabelInMonth(db: Db, kind: LabelKind, year: number, m
   return rows.map((r) => ({
     labelId: r.labelId,
     label: r.labelText,
-    sum: r.sumNet,
+    sum: Number(r.sumNet),
+    count: Number(r.tradesCount),
+    wins: Number(r.winsCount),
   }))
 }
 

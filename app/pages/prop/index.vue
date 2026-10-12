@@ -277,16 +277,16 @@ watch(
     <div v-if="stats?.summary" class="summary-grid">
       <div class="card summary-tile">
         <div class="summary-lbl">Покупки аккаунтов</div>
-        <strong class="neg">{{ fmtSignedUsdt(-Math.abs(stats.summary.purchasesTotal)) }}</strong>
+        <strong class="neg">{{ fmtSignedUsdt(-Math.abs(stats.summary.purchasesTotal), 0, null, { forceUsdt: true }) }}</strong>
       </div>
       <div class="card summary-tile">
         <div class="summary-lbl">Выплаты</div>
-        <strong class="pos">{{ fmtSignedUsdt(Math.abs(stats.summary.payoutsTotal)) }}</strong>
+        <strong class="pos">{{ fmtSignedUsdt(Math.abs(stats.summary.payoutsTotal), 0, null, { forceUsdt: true }) }}</strong>
       </div>
       <div class="card summary-tile">
         <div class="summary-lbl">Денежный поток</div>
         <strong :class="stats.summary.netCashflow >= 0 ? 'pos' : 'neg'">{{
-          fmtSignedUsdt(stats.summary.netCashflow)
+          fmtSignedUsdt(stats.summary.netCashflow, 0, null, { forceUsdt: true })
         }}</strong>
       </div>
       <div class="card summary-tile">
@@ -302,7 +302,7 @@ watch(
       <div class="card summary-tile summary-tile--wide">
         <div class="summary-lbl">Итого по пропу</div>
         <strong :class="stats.summary.combinedNet >= 0 ? 'pos' : 'neg'">{{
-          fmtSignedUsdt(stats.summary.combinedNet)
+          fmtSignedUsdt(stats.summary.combinedNet, 0, null, { forceUsdt: true })
         }}</strong>
         <span class="muted summary-sub">выплаты − покупки + PnL сделок</span>
       </div>
@@ -333,7 +333,7 @@ watch(
               </td>
               <td v-if="!selectedAccount">{{ t.accountName || '—' }}</td>
               <td>{{ t.side === 'long' ? 'Long' : 'Short' }}</td>
-              <td :class="t.net >= 0 ? 'pos' : 'neg'">{{ fmtSignedUsdt(t.net) }}</td>
+              <td :class="t.net >= 0 ? 'pos' : 'neg'">{{ fmtSignedUsdt(t.net, 0, t.quoteVolumeUsdt, { strict: true }) }}</td>
             </tr>
           </tbody>
         </table>
@@ -364,7 +364,7 @@ watch(
                 <span class="kind-badge" :class="`kind-badge--${e.kind}`">{{ kindLabel(e.kind) }}</span>
               </td>
               <td v-if="!selectedAccount">{{ e.accountName }}</td>
-              <td :class="e.signedUsdt >= 0 ? 'pos' : 'neg'">{{ fmtSignedUsdt(e.signedUsdt) }}</td>
+              <td :class="e.signedUsdt >= 0 ? 'pos' : 'neg'">{{ fmtSignedUsdt(e.signedUsdt, 0, null, { forceUsdt: true }) }}</td>
               <td class="note-cell">{{ e.note || '—' }}</td>
               <td class="event-actions">
                 <button

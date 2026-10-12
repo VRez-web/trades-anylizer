@@ -4,6 +4,8 @@ import { fileURLToPath } from 'node:url'
 export default defineNuxtConfig({
   compatibilityDate: '2025-07-15',
   devtools: { enabled: true },
+  /** SPA: даты, tzOffset и localStorage считаются только в браузере — без hydration mismatch. */
+  ssr: false,
   css: ['~/assets/css/main.css'],
   alias: {
     '#shared': fileURLToPath(new URL('./shared', import.meta.url)),

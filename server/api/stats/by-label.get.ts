@@ -9,10 +9,11 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 400, statusMessage: 'year и month (1–12) обязательны' })
   }
   const db = useDb()
-  const [system, technique, psychology] = await Promise.all([
+  const [system, technique, psychology, other] = await Promise.all([
     pnlByLabelInMonth(db, 'system', year, month),
     pnlByLabelInMonth(db, 'technique', year, month),
     pnlByLabelInMonth(db, 'psychology', year, month),
+    pnlByLabelInMonth(db, 'other', year, month),
   ])
-  return { year, month, system, technique, psychology }
+  return { year, month, system, technique, psychology, other }
 })

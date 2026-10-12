@@ -1,13 +1,14 @@
 import { useDb } from '../../utils/db'
 import { labelDefs } from '../../database/schema'
 import type { LabelKind } from '../../database/schema'
+import { labelKinds } from '#shared/labelKind'
 
-const KINDS = new Set<LabelKind>(['system', 'technique', 'psychology'])
+const KINDS = new Set<string>(labelKinds)
 
 export default defineEventHandler(async (event) => {
   const body = await readBody(event) as { kind?: string; label?: string }
-  if (!body?.kind || !KINDS.has(body.kind as LabelKind) || !body?.label?.trim()) {
-    throw createError({ statusCode: 400, statusMessage: 'kind (system|technique|psychology) и label обязательны' })
+  if (!body?.kind || !KINDS.has(body.kind) || !body?.label?.trim()) {
+    throw createError({ statusCode: 400, statusMessage: `kind (${labelKinds.join('|')}) и label обязательны` })
   }
   const db = useDb()
   const now = new Date()

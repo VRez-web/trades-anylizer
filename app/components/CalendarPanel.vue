@@ -25,6 +25,8 @@ const props = defineProps<{
   journalWeekAnalysisByKey?: Record<string, boolean>
   /** Объём сделок месяца — база для режима %. */
   monthQuoteVolume?: number | null
+  /** Объём по дням yyyy-MM-dd — база % для ячейки дня. */
+  dayQuoteVolume?: Record<string, number>
 }>()
 
 const emit = defineEmits<{
@@ -245,7 +247,7 @@ function next() {
             </span>
             <span class="num">{{ c.dayNum }}</span>
             <span v-if="c.inMonth && c.sum != null && c.sum !== 0" class="mini" :class="c.sum > 0 ? 'pos' : 'neg'">
-              {{ fmtSignedUsdt(c.sum, 0, monthQuoteVolume) }}
+              {{ fmtSignedUsdt(c.sum, 0, dayQuoteVolume?.[c.key], { strict: true }) }}
             </span>
             <span
               v-else-if="c.inMonth && c.liveCount > 0"
