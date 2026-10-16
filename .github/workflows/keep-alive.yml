@@ -5,7 +5,7 @@ name: keep-alive
 # (например https://<app>.onrender.com/api/health).
 on:
   schedule:
-    - cron: '*/10 * * * *'
+    - cron: '*/5 * * * *'
   workflow_dispatch:
 
 jobs:
@@ -15,7 +15,7 @@ jobs:
     steps:
       - name: Ping health
         env:
-          HEALTH_URL: ${{ vars.HEALTH_URL }}
+          HEALTH_URL: ${{ vars.HEALTH_URL || secrets.HEALTH_URL }}
         run: |
           if [ -z "$HEALTH_URL" ]; then
             echo "HEALTH_URL variable is not set"
