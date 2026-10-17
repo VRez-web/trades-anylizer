@@ -35,18 +35,19 @@ watch([year, month], ([yy, mm]) => {
 const calendarUrl = computed(
   () => `/api/stats/calendar?year=${year.value}&month=${month.value}&tzOffset=${new Date().getTimezoneOffset()}`,
 )
-const { data: calendar } = await useFetch(calendarUrl)
-
-const { data: equity } = await useFetch<{
-  points: { t: string; cumulative: number }[]
-  markers: { t: string; kind: 'purchase' | 'payout'; accountName: string; amountUsdt: number }[]
-  quoteVolumeUsdt?: number | null
-}>('/api/stats/equity')
-
 const byLabelUrl = computed(
   () => `/api/stats/by-label?year=${year.value}&month=${month.value}`,
 )
-const { data: byLabel } = await useFetch(byLabelUrl)
+
+const [{ data: calendar }, { data: equity }, { data: byLabel }] = await Promise.all([
+  useFetch(calendarUrl),
+  useFetch<{
+    points: { t: string; cumulative: number }[]
+    markers: { t: string; kind: 'purchase' | 'payout'; accountName: string; amountUsdt: number }[]
+    quoteVolumeUsdt?: number | null
+  }>('/api/stats/equity'),
+  useFetch(byLabelUrl),
+])
 
 const equityPoints = computed(() => {
   const raw = equity.value
@@ -82,25 +83,6 @@ const equityMarkers = computed(() => {
     amountUsdt: number
   }[]
 })
-
-const equityEventsSorted = computed(() =>
-  [...equityMarkers.value].sort((a, b) => new Date(b.t).getTime() - new Date(a.t).getTime()),
-)
-
-const { fmtUsdt } = useMoney()
-
-function fmtPropEventAmount(kind: 'purchase' | 'payout', amount: number) {
-  const n = kind === 'purchase' ? -Math.abs(amount) : Math.abs(amount)
-  return fmtUsdt(n, { forceUsdt: true })
-}
-
-function fmtPropEventWhen(iso: string) {
-  return new Date(iso).toLocaleString('ru-RU', { dateStyle: 'short', timeStyle: 'short' })
-}
-
-function propEventKindLabel(kind: 'purchase' | 'payout') {
-  return kind === 'purchase' ? 'Покупка' : 'Выплата'
-}
 
 function goDay(date: string) {
   navigateTo(`/trades/day/${date}`)
@@ -148,20 +130,6 @@ function goDay(date: string) {
         </template>
       </ClientOnly>
       <p v-if="equityPoints.length === 0" class="muted">Пока нет закрытых сделок</p>
-      <div v-if="equityMarkers.length" class="eq-legend">
-        <span class="eq-legend-item"><span class="eq-dot eq-dot--purchase" /> Покупка проп-счёта</span>
-        <span class="eq-legend-item"><span class="eq-dot eq-dot--payout" /> Выплата с пропа</span>
-      </div>
-      <ul v-if="equityEventsSorted.length" class="eq-events">
-        <li v-for="(m, i) in equityEventsSorted" :key="`${m.t}-${m.kind}-${i}`" class="eq-event">
-          <span class="eq-event-kind" :class="`eq-event-kind--${m.kind}`">{{ propEventKindLabel(m.kind) }}</span>
-          <span class="eq-event-account">{{ m.accountName }}</span>
-          <span class="eq-event-amt" :class="m.kind === 'payout' ? 'pos' : 'neg'">{{
-            fmtPropEventAmount(m.kind, m.amountUsdt)
-          }}</span>
-          <span class="eq-event-when muted">{{ fmtPropEventWhen(m.t) }}</span>
-        </li>
-      </ul>
     </div>
   </div>
 </template>
@@ -174,68 +142,5 @@ function goDay(date: string) {
 .bars-caption {
   margin: 0 0 0.65rem;
   font-size: 0.8125rem;
-}
-.eq-legend {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.75rem 1.25rem;
-  margin-top: 0.65rem;
-  font-size: 0.78rem;
-  color: var(--muted);
-}
-.eq-legend-item {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.35rem;
-}
-.eq-dot {
-  width: 0.55rem;
-  height: 0.55rem;
-  border-radius: 50%;
-}
-.eq-dot--purchase {
-  background: #b91c1c;
-}
-.eq-dot--payout {
-  background: #15803d;
-}
-.eq-events {
-  list-style: none;
-  margin: 0.75rem 0 0;
-  padding: 0;
-  border-top: 1px solid var(--border);
-}
-.eq-event {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: 0.35rem 0.65rem;
-  padding: 0.4rem 0;
-  border-bottom: 1px solid var(--border);
-  font-size: 0.8125rem;
-}
-.eq-event-kind {
-  font-size: 0.68rem;
-  font-weight: 600;
-  padding: 1px 5px;
-  border-radius: 3px;
-}
-.eq-event-kind--purchase {
-  color: #b91c1c;
-  background: rgba(185, 28, 28, 0.08);
-}
-.eq-event-kind--payout {
-  color: #166534;
-  background: rgba(22, 101, 52, 0.08);
-}
-.eq-event-account {
-  font-weight: 600;
-}
-.eq-event-amt {
-  font-variant-numeric: tabular-nums;
-}
-.eq-event-when {
-  margin-left: auto;
-  font-size: 0.75rem;
 }
 </style>

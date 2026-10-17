@@ -5,6 +5,7 @@ import {
   text,
   doublePrecision,
   uniqueIndex,
+  index,
   primaryKey,
   timestamp,
 } from 'drizzle-orm/pg-core'
@@ -90,6 +91,7 @@ export const trades = pgTable(
   },
   (t) => ({
     externalKeyIdx: uniqueIndex('trades_external_key_unique').on(t.externalKey),
+    exitAtIdx: index('trades_exit_at_idx').on(t.exitAt),
   }),
 )
 
@@ -105,6 +107,7 @@ export const tradeLabelLinks = pgTable(
   },
   (t) => ({
     pk: primaryKey({ columns: [t.tradeId, t.labelId] }),
+    labelIdx: index('trade_label_links_label_idx').on(t.labelId),
   }),
 )
 
@@ -122,6 +125,13 @@ export const periodNotes = pgTable(
     scopeKeyIdx: uniqueIndex('period_notes_scope_key').on(t.scope, t.periodKey),
   }),
 )
+
+export const quickNotes = pgTable('quick_notes', {
+  id: serial('id').primaryKey(),
+  title: text('title').notNull().default(''),
+  body: text('body').notNull().default(''),
+  updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'date' }).notNull(),
+})
 
 export const strategyDoc = pgTable('strategy_doc', {
   id: integer('id').primaryKey(),

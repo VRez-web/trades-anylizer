@@ -94,23 +94,26 @@ function selectAccount(name: string) {
   selectedAccount.value = selectedAccount.value === name ? '' : name
 }
 
-const { data: events, refresh: refreshEvents } = await useFetch<PropEvent[]>('/api/prop/events')
-
 const statsUrl = computed(() => {
   const base = '/api/prop/stats'
   if (!selectedAccount.value) return base
   return `${base}?accountName=${encodeURIComponent(selectedAccount.value)}`
 })
-const { data: stats, refresh: refreshStats } = await useFetch<PropStats>(statsUrl, { watch: [statsUrl] })
-
 const tradesUrl = computed(() => {
   const q = new URLSearchParams({ tradeSource: 'prop', sort: 'exit_desc' })
   if (selectedAccount.value) q.set('accountName', selectedAccount.value)
   return `/api/trades?${q}`
 })
-const { data: propTrades, refresh: refreshTrades } = await useFetch<PropTradeRow[]>(tradesUrl, {
-  watch: [tradesUrl],
-})
+
+const [
+  { data: events, refresh: refreshEvents },
+  { data: stats, refresh: refreshStats },
+  { data: propTrades, refresh: refreshTrades },
+] = await Promise.all([
+  useFetch<PropEvent[]>('/api/prop/events'),
+  useFetch<PropStats>(statsUrl, { watch: [statsUrl] }),
+  useFetch<PropTradeRow[]>(tradesUrl, { watch: [tradesUrl] }),
+])
 
 async function refreshAll() {
   await Promise.all([refreshEvents(), refreshStats(), refreshTrades(), refreshAccountNames()])

@@ -74,7 +74,7 @@ const hiddenInfoLabelKeys = ref<string[]>([])
 const excludeHiddenFromTotals = ref(true)
 const filtersReady = ref(false)
 
-const { data: allLabels } = await useFetch('/api/labels')
+const { data: allLabels } = useLazyFetch('/api/labels')
 
 const labelOptions = computed(() => {
   const L = allLabels.value ?? []

@@ -358,7 +358,7 @@ async function unmergeGroup() {
 
 const isFromSync = computed(() => Boolean(data.value?.trade?.externalKey))
 
-const { data: allLabels, refresh: refreshAllLabels } = await useFetch('/api/labels')
+const { data: allLabels, refresh: refreshAllLabels } = useLazyFetch('/api/labels')
 
 const optionsSystem = computed(() =>
   (allLabels.value ?? [])

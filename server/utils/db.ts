@@ -38,15 +38,48 @@ function getConnectionString(): string {
   return u
 }
 
-function createClient() {
-  const url = getConnectionString()
+/**
+ * Session pooler Supabase (:5432) ограничен pool_size=15 клиентами на все инстансы → EMAXCONNSESSION.
+ * Рантайму хватает transaction pooler (:6543, тот же хост); drizzle-kit берёт DIRECT_DATABASE_URL отдельно.
+ */
+function toTransactionPooler(url: string) {
+  try {
+    const u = new URL(url)
+    if (u.hostname.endsWith('.pooler.supabase.com') && (u.port === '5432' || u.port === '')) {
+      u.port = '6543'
+      return u.toString()
+    }
+  } catch {
+    /* оставляем как есть */
+  }
+  return url
+}
+
+function createClient(url: string) {
   const isLocal = /localhost|127\.0\.0\.1/.test(url) && !url.includes('supabase')
   return postgres(url, {
     prepare: false,
     ssl: isLocal ? false : 'require',
-    max: 10,
+    max: 4,
+    idle_timeout: 20,
+    max_lifetime: 60 * 30,
     connect_timeout: 25,
+    onnotice: () => {},
   })
+}
+
+const globalDb = globalThis as typeof globalThis & {
+  __tradesSql?: { url: string; sql: ReturnType<typeof postgres> }
+}
+
+function sharedClient() {
+  const url = toTransactionPooler(getConnectionString())
+  const cached = globalDb.__tradesSql
+  if (cached?.url === url) return cached.sql
+  cached?.sql?.end({ timeout: 5 }).catch(() => {})
+  const sql = createClient(url)
+  globalDb.__tradesSql = { url, sql }
+  return sql
 }
 
 /**
@@ -55,10 +88,11 @@ function createClient() {
  */
 export function useDb(): AppDatabase {
   if (_db) return _db
-  _sql = createClient()
+  // HMR в dev перезагружает модуль — без кэша на globalThis старые соединения висят до лимита пула.
+  _sql = sharedClient()
   _db = drizzle(_sql, { schema: appSchema })
   if (!_seed) {
-    _seed = ensureStrategyRow(_db).catch((e) => {
+    _seed = ensureSchemaExtras(_sql).then(() => ensureStrategyRow(_db!)).catch((e) => {
       logConnectionHintOnFailure(e)
       console.error('[db] ensureStrategyRow', e)
     })
@@ -71,6 +105,19 @@ export async function ensureDbSeeded() {
   if (_seed) {
     await _seed
   }
+}
+
+async function ensureSchemaExtras(sql: ReturnType<typeof postgres>) {
+  await sql`
+    CREATE TABLE IF NOT EXISTS quick_notes (
+      id serial PRIMARY KEY,
+      title text NOT NULL DEFAULT '',
+      body text NOT NULL DEFAULT '',
+      updated_at timestamptz NOT NULL
+    )
+  `
+  await sql`CREATE INDEX IF NOT EXISTS trades_exit_at_idx ON trades (exit_at)`
+  await sql`CREATE INDEX IF NOT EXISTS trade_label_links_label_idx ON trade_label_links (label_id)`
 }
 
 async function ensureStrategyRow(db: AppDatabase) {

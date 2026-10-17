@@ -1,5 +1,15 @@
 <script setup lang="ts">
-import { createChart, ColorType, LineSeries, LineStyle } from 'lightweight-charts'
+import {
+  createChart,
+  createSeriesMarkers,
+  ColorType,
+  LineSeries,
+  LineStyle,
+  type ISeriesMarkersPluginApi,
+  type SeriesMarker,
+  type Time,
+  type UTCTimestamp,
+} from 'lightweight-charts'
 import { eventUnixSeconds } from '#shared/tradeChartMarkers'
 import { nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 
@@ -16,27 +26,17 @@ const props = defineProps<{
   volumeBasis?: number | null
 }>()
 
-const wrap = ref<HTMLDivElement | null>(null)
 const root = ref<HTMLDivElement | null>(null)
-const hovered = ref<number | null>(null)
-const dots = ref<{ x: number; y: number; kind: 'purchase' | 'payout'; text: string }[]>([])
 
 const { unit, fmtUsdt } = useMoney()
 
 let chart: ReturnType<typeof createChart> | null = null
 let series: ReturnType<ReturnType<typeof createChart>['addSeries']> | null = null
+let markersApi: ISeriesMarkersPluginApi<Time> | null = null
 let resizeObserver: ResizeObserver | null = null
-let rangeHandler: (() => void) | null = null
-
-function markerLabel(m: EquityChartMarker) {
-  const kind = m.kind === 'purchase' ? 'Покупка пропа' : 'Выплата с пропа'
-  const when = new Date(m.t).toLocaleString('ru-RU', { dateStyle: 'short', timeStyle: 'short' })
-  const signed = m.kind === 'purchase' ? -Math.abs(m.amountUsdt) : Math.abs(m.amountUsdt)
-  return `${kind} · ${m.accountName} · ${fmtUsdt(signed, { forceUsdt: true })} · ${when}`
-}
 
 function toUnix(iso: string) {
-  return Math.floor(new Date(iso).getTime() / 1000) as import('lightweight-charts').UTCTimestamp
+  return Math.floor(new Date(iso).getTime() / 1000) as UTCTimestamp
 }
 
 function formatAxisPrice(value: number) {
@@ -47,48 +47,46 @@ function formatAxisPrice(value: number) {
   return `${sign}$${Math.abs(value).toLocaleString('ru-RU', { maximumFractionDigits: 0 })}`
 }
 
-function valueAtTime(timeSec: number) {
-  const pts = props.points
-  if (!pts.length) return 0
-  let best = pts[0]
+/** Маркер должен стоять ровно на времени точки серии, иначе библиотека его не рисует. */
+function nearestPointTime(timeSec: number) {
+  let best: UTCTimestamp | null = null
   let bestDt = Infinity
-  for (const p of pts) {
-    const dt = Math.abs(toUnix(p.t) - timeSec)
+  for (const p of props.points) {
+    const t = toUnix(p.t)
+    const dt = Math.abs(t - timeSec)
     if (dt < bestDt) {
       bestDt = dt
-      best = p
+      best = t
     }
   }
-  return best.cumulative
+  return best
 }
 
-function layoutDots() {
-  if (!chart || !series) {
-    dots.value = []
-    return
-  }
-  const next: typeof dots.value = []
+function buildMarkers(): SeriesMarker<Time>[] {
+  const out: SeriesMarker<Time>[] = []
   for (const m of props.markers ?? []) {
-    const time = eventUnixSeconds(m.t) as import('lightweight-charts').UTCTimestamp
-    const x = chart.timeScale().timeToCoordinate(time)
-    const y = series.priceToCoordinate(valueAtTime(time))
-    if (x == null || y == null) continue
-    next.push({ x, y, kind: m.kind, text: markerLabel(m) })
+    const time = nearestPointTime(eventUnixSeconds(m.t))
+    if (time == null) continue
+    const payout = m.kind === 'payout'
+    const amount = fmtUsdt(payout ? Math.abs(m.amountUsdt) : -Math.abs(m.amountUsdt), { forceUsdt: true, max: 0, min: 0 })
+    out.push({
+      time,
+      position: 'inBar',
+      shape: 'circle',
+      color: payout ? '#15803d' : '#b91c1c',
+      size: 1.4,
+      text: `${payout ? '+' : ''}${amount} · ${m.accountName}`,
+    })
   }
-  dots.value = next
+  return out.sort((a, b) => (a.time as number) - (b.time as number))
 }
 
 function redraw() {
   if (!root.value) return
-  hovered.value = null
-  if (rangeHandler && chart) {
-    chart.timeScale().unsubscribeVisibleLogicalRangeChange(rangeHandler)
-    rangeHandler = null
-  }
   chart?.remove()
   chart = null
   series = null
-  dots.value = []
+  markersApi = null
   if (!props.points.length) return
 
   chart = createChart(root.value, {
@@ -106,7 +104,7 @@ function redraw() {
     leftPriceScale: {
       visible: true,
       borderColor: '#9aa6b2',
-      scaleMargins: { top: 0.06, bottom: 0.08 },
+      scaleMargins: { top: 0.08, bottom: 0.08 },
     },
     rightPriceScale: { visible: false },
     timeScale: {
@@ -120,22 +118,15 @@ function redraw() {
   })
 
   series = chart.addSeries(LineSeries, {
-    color: '#4472C4',
-    lineWidth: 3,
+    color: '#2563eb',
+    lineWidth: 2,
     priceLineVisible: false,
     lastValueVisible: false,
-    priceFormat: {
-      type: 'custom',
-      minMove: 0.01,
-      formatter: formatAxisPrice,
-    },
+    priceFormat: { type: 'custom', minMove: 0.01, formatter: formatAxisPrice },
   })
-
-  const data = props.points.map((p) => ({
-    time: toUnix(p.t),
-    value: p.cumulative,
-  }))
-  series.setData(data)
+  const byTime = new Map<UTCTimestamp, number>()
+  for (const p of props.points) byTime.set(toUnix(p.t), p.cumulative)
+  series.setData([...byTime].sort((a, b) => a[0] - b[0]).map(([time, value]) => ({ time, value })))
 
   series.createPriceLine({
     price: 0,
@@ -150,25 +141,16 @@ function redraw() {
     autoscaleInfoProvider: (original) => {
       const res = original()
       if (!res?.priceRange) return res
-      const dataMin = res.priceRange.minValue
-      const dataMax = res.priceRange.maxValue
-      const min = Math.min(dataMin, 0)
-      const max = Math.max(dataMax, 0)
+      const min = Math.min(res.priceRange.minValue, 0)
+      const max = Math.max(res.priceRange.maxValue, 0)
       const span = Math.max(max - min, Math.abs(max) * 0.08, 1)
       const pad = span * 0.08
-      return {
-        ...res,
-        priceRange: { minValue: min - pad, maxValue: max + pad },
-      }
+      return { ...res, priceRange: { minValue: min - pad, maxValue: max + pad } }
     },
   })
 
+  markersApi = createSeriesMarkers(series, buildMarkers())
   chart.timeScale().fitContent()
-  rangeHandler = () => layoutDots()
-  chart.timeScale().subscribeVisibleLogicalRangeChange(rangeHandler)
-  nextTick(() => {
-    requestAnimationFrame(() => layoutDots())
-  })
 }
 
 watch(
@@ -183,120 +165,34 @@ watch(
     series?.applyOptions({
       priceFormat: { type: 'custom', minMove: 0.01, formatter: formatAxisPrice },
     })
-    layoutDots()
+    markersApi?.setMarkers(buildMarkers())
   },
 )
 
 onMounted(() => {
   redraw()
   resizeObserver = new ResizeObserver(() => {
-    if (chart && root.value) {
-      chart.applyOptions({ width: root.value.clientWidth })
-      layoutDots()
-    }
+    if (chart && root.value) chart.applyOptions({ width: root.value.clientWidth })
   })
   if (root.value) resizeObserver.observe(root.value)
 })
 
 onUnmounted(() => {
-  if (rangeHandler && chart) chart.timeScale().unsubscribeVisibleLogicalRangeChange(rangeHandler)
   resizeObserver?.disconnect()
   chart?.remove()
   chart = null
   series = null
+  markersApi = null
 })
 </script>
 
 <template>
-  <div ref="wrap" class="eq-wrap">
-    <div ref="root" class="eq" />
-    <button
-      v-for="(d, i) in dots"
-      :key="i"
-      type="button"
-      class="eq-dot-btn"
-      :class="[`eq-dot-btn--${d.kind}`, { 'is-hot': hovered === i }]"
-      :style="{ left: `${d.x}px`, top: `${d.y}px` }"
-      :aria-label="d.text"
-      @mouseenter="hovered = i"
-      @mouseleave="hovered = null"
-      @focus="hovered = i"
-      @blur="hovered = null"
-    />
-    <div
-      v-if="hovered != null && dots[hovered]"
-      class="eq-tooltip"
-      :style="{ left: `${dots[hovered].x}px`, top: `${dots[hovered].y}px` }"
-    >
-      {{ dots[hovered].text }}
-    </div>
-  </div>
+  <div ref="root" class="eq" />
 </template>
 
 <style scoped>
-.eq-wrap {
-  position: relative;
-  width: 100%;
-}
 .eq {
   min-height: 420px;
   width: 100%;
-}
-.eq-dot-btn {
-  position: absolute;
-  z-index: 4;
-  width: 12px;
-  height: 12px;
-  margin: 0;
-  padding: 0;
-  border-radius: 50%;
-  border: 2px solid #fff;
-  transform: translate(-50%, -50%);
-  cursor: pointer;
-  box-shadow: 0 0 0 1px rgba(15, 23, 42, 0.12);
-}
-.eq-dot-btn--purchase {
-  background: #b91c1c;
-}
-.eq-dot-btn--payout {
-  background: #15803d;
-}
-.eq-dot-btn.is-hot {
-  animation: eq-pulse 1.1s ease-out infinite;
-}
-@keyframes eq-pulse {
-  0% {
-    box-shadow: 0 0 0 0 currentColor;
-    transform: translate(-50%, -50%) scale(1);
-  }
-  70% {
-    box-shadow: 0 0 0 10px transparent;
-    transform: translate(-50%, -50%) scale(1.35);
-  }
-  100% {
-    box-shadow: 0 0 0 0 transparent;
-    transform: translate(-50%, -50%) scale(1);
-  }
-}
-.eq-dot-btn--purchase.is-hot {
-  color: rgba(185, 28, 28, 0.45);
-}
-.eq-dot-btn--payout.is-hot {
-  color: rgba(21, 128, 61, 0.45);
-}
-.eq-tooltip {
-  position: absolute;
-  z-index: 5;
-  transform: translate(-50%, calc(-100% - 12px));
-  max-width: min(320px, 90vw);
-  padding: 0.35rem 0.55rem;
-  border-radius: 6px;
-  background: rgba(15, 23, 42, 0.92);
-  color: #f8fafc;
-  font-size: 0.72rem;
-  line-height: 1.35;
-  pointer-events: none;
-  white-space: normal;
-  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.15);
 }
 </style>

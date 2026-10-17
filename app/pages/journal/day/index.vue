@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import { format } from 'date-fns'
-import { defaultTradePlanTemplate } from '#shared/tradePlanTemplate'
 import type { JournalDayTrade } from '~/components/JournalDayCandleChart.vue'
 import { sumQuoteVolumeUsdt } from '#shared/quoteVolume'
 
@@ -26,8 +25,7 @@ watch(
     if (d && typeof d === 'object') {
       if ('note' in d) note.value = (d as { note: string }).note
       if ('tradePlan' in d) {
-        const raw = (d as { tradePlan: string }).tradePlan ?? ''
-        tradePlan.value = raw.trim() === '' ? defaultTradePlanTemplate : raw
+        tradePlan.value = (d as { tradePlan: string }).tradePlan ?? ''
       }
     }
   },
@@ -213,7 +211,7 @@ async function saveNote() {
 
         <div class="card journal-day__block">
           <h2 class="journal-day__h">Описание дня</h2>
-          <textarea v-model="note" class="textarea" rows="8" placeholder="Итоги, эмоции, что улучшить…" />
+          <textarea v-model="note" class="textarea" rows="8" />
           <button type="button" class="btn btn-primary journal-day__save" @click="saveNote">
             Сохранить
           </button>

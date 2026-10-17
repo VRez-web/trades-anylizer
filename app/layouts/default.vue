@@ -76,6 +76,7 @@ async function runBybitSync() {
     <main>
       <slot />
     </main>
+    <QuickNotes />
 
     <Teleport to="body">
       <div v-if="bybitSync.active" class="sync-overlay" role="status" aria-live="polite">

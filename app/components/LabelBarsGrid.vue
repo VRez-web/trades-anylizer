@@ -42,11 +42,13 @@ function wr(r: Row) {
 function halfPct(sum: number) {
   return (Math.abs(sum) / maxAbs.value) * 50
 }
+
+const order: LabelKind[] = ['other', ...labelKinds.filter((k) => k !== 'other')]
 </script>
 
 <template>
   <div class="grid">
-    <div v-for="k in labelKinds" :key="k" class="card lb-card">
+    <div v-for="k in order" :key="k" class="card lb-card">
       <div class="head">
         <span class="dot" :class="`k-${k}`" />
         <span class="title">{{ labelKindTitles[k] }}</span>
