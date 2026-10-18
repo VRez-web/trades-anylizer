@@ -38,28 +38,13 @@ function getConnectionString(): string {
   return u
 }
 
-/**
- * Session pooler Supabase (:5432) ограничен pool_size=15 клиентами на все инстансы → EMAXCONNSESSION.
- * Рантайму хватает transaction pooler (:6543, тот же хост); drizzle-kit берёт DIRECT_DATABASE_URL отдельно.
- */
-function toTransactionPooler(url: string) {
-  try {
-    const u = new URL(url)
-    if (u.hostname.endsWith('.pooler.supabase.com') && (u.port === '5432' || u.port === '')) {
-      u.port = '6543'
-      return u.toString()
-    }
-  } catch {
-    /* оставляем как есть */
-  }
-  return url
-}
-
 function createClient(url: string) {
   const isLocal = /localhost|127\.0\.0\.1/.test(url) && !url.includes('supabase')
   return postgres(url, {
     prepare: false,
     ssl: isLocal ? false : 'require',
+    // Supabase session pooler: pool_size 15 на все инстансы (Render + локальный dev).
+    // Transaction pooler (:6543) не подходит — postgres-js пайплайнит запросы, и ответы зависают.
     max: 4,
     idle_timeout: 20,
     max_lifetime: 60 * 30,
@@ -73,7 +58,7 @@ const globalDb = globalThis as typeof globalThis & {
 }
 
 function sharedClient() {
-  const url = toTransactionPooler(getConnectionString())
+  const url = getConnectionString()
   const cached = globalDb.__tradesSql
   if (cached?.url === url) return cached.sql
   cached?.sql?.end({ timeout: 5 }).catch(() => {})
