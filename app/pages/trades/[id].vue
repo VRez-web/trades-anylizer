@@ -44,25 +44,6 @@ async function openDayPlanModal() {
   }
 }
 
-const quoteVolPreview = computed(() => {
-  const t = data.value?.trade
-  if (!t) return null
-  if (form.entryNotionalUsdt !== '') {
-    const n = Number(form.entryNotionalUsdt)
-    if (Number.isFinite(n) && n > 0) return n
-  }
-  if (t.externalKey) return t.quoteVolumeUsdt ?? null
-  return estimateQuoteVolumeUsdt(form.side, form.entryPrice, form.exitPrice, form.income)
-})
-
-watch(
-  quoteVolPreview,
-  (v) => {
-    setBasis(v)
-  },
-  { immediate: true },
-)
-
 const priceMoveStr = computed(() => {
   const t = data.value?.trade
   if (!t) return null
@@ -150,6 +131,25 @@ const form = reactive({
   chartProvider: 'bybit' as ChartMeta['chartProvider'],
   marketCategory: 'linear',
 })
+
+const quoteVolPreview = computed(() => {
+  const t = data.value?.trade
+  if (!t) return null
+  if (form.entryNotionalUsdt !== '') {
+    const n = Number(form.entryNotionalUsdt)
+    if (Number.isFinite(n) && n > 0) return n
+  }
+  if (t.externalKey) return t.quoteVolumeUsdt ?? null
+  return estimateQuoteVolumeUsdt(form.side, form.entryPrice, form.exitPrice, form.income)
+})
+
+watch(
+  quoteVolPreview,
+  (v) => {
+    setBasis(v)
+  },
+  { immediate: true },
+)
 
 function applyChartMeta(meta: ChartMeta) {
   form.chartSymbol = meta.chartSymbol

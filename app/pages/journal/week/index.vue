@@ -40,7 +40,7 @@ const { setBasis } = useDisplayUnit()
 watch(
   data,
   (d) => {
-    const rows = (d?.days ?? []).flatMap((day: { trades?: { quoteVolumeUsdt?: number | null }[] }) => day.trades ?? [])
+    const rows = (d?.dayBlocks ?? []).flatMap((day: { trades?: { quoteVolumeUsdt?: number | null }[] }) => day.trades ?? [])
     setBasis(sumQuoteVolumeUsdt(rows))
   },
   { immediate: true },
